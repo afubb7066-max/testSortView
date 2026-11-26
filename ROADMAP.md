@@ -1,6 +1,6 @@
 # نقشه راه پورت اندروید سورت‌ویو (SortView Android)
 
-> نسخه سند: 1.0 — تاریخ: 2026-11-26
+> نسخه سند: 1.1 — تاریخ: 2026-11-27
 > مخزن مرجع (دسکتاپ): https://github.com/mohammadjafari-dev/SortView (v1.10.3)
 > مخزن توسعه (تست): https://github.com/afubb7066-max/testSortView
 
@@ -55,7 +55,7 @@
 5. **Undo در حافظه**: جفت‌های (مبدأ، مقصد) آخرین ۵۰ دور، پاک شدن با بستن برنامه — مثل دسکتاپ.
 6. **ترجمه‌ها**: کلیدها همان متن‌های انگلیسی canonical دسکتاپ هستند؛ متن فارسی از `desktop/app_i18n.py` کپی می‌شود؛ RTL فقط برای فارسی؛ جای‌نگهدارهای `{x}` حفظ می‌شوند.
 7. **لایسنس**: GPL-3.0-or-later حفظ می‌شود؛ فایل LICENSE دست‌نخورده می‌ماند؛ در «درباره» اپ، حقوق محمد جعفری و پیوند مخزن اصلی ذکر می‌شود.
-8. **تاریخچه git مخزن اصلی حفظ شده است** (کل history به testSortView پوش شده) — attribution طبیعی می‌ماند.
+8. **Attribution از طریق مخزن مرجع**: تاریخچه‌ی اصلی در `mohammadjafari-dev/SortView` دست‌نخورده باقی می‌ماند و پورت به آن ارجاع می‌دهد (fork کامل میسر نبود).
 9. **نسخه‌گذاری مستقل**: پورت اندروید از `0.1.0` شروع می‌شود و به `1.0.0` (پاریت کامل) می‌رسد؛ `versionName`/`versionCode` مستقل از دسکتاپ است.
 
 ## 5. ساختار هدف مخزن testSortView
@@ -73,9 +73,7 @@ testSortView/
 │           ├── AndroidManifest.xml
 │           ├── java/com/mohammadjafari/sortview/
 │           └── res/ (values, values-fa, drawable, mipmap-anydpi-v26, font)
-├── desktop/                    ← سورس کامل دسکتاپ (جابه‌جایی‌شده، دست‌نخورده)
-│   ├── main.py · app_i18n.py · tests/ · assets/ · docs/ · BUILD.bat …
-│   └── .github/workflows/ci.yml   (قدیمی — خفته؛ فقط مرجع)
+├── desktop/                    ← اشاره‌گر به مخزن مرجع دسکتاپ (v1.10.3 دست‌نخورده)
 ├── .github/workflows/
 │   └── build-apk.yml           ← بیلد خودکار APK روی هر push
 ├── ROADMAP.md                  ← همین سند
@@ -86,13 +84,12 @@ testSortView/
 
 ## 6. فازها
 
-### فاز ۰ — راه‌اندازی مخزن و CI (امروز؛ اجرا توسط دستیار گیت‌هاب)
-- [ ] کل تاریخچه SortView به `afubb7066-max/testSortView` (شاخه main) پوش شود.
-- [ ] سورس دسکتاپ به پوشه `desktop/` منتقل شود (`git mv`، بدون تغییر محتوا).
-- [ ] اسکلت اندروید (Kotlin 2.0.21 + AGP 8.7.3 + Compose BOM 2024.12.01، minSdk 26 / target & compileSdk 35) ساخته شود؛ MainActivity فعلاً صفحه «سلام» است.
-- [ ] ورک‌فلو `build-apk.yml` اضافه شود (JDK 17، Gradle 8.10.2، `assembleDebug`، آپلود artifact).
-- [ ] `ci.yml` ویندوزی قدیمی از ریشه به `desktop/.github/workflows/` منتقل شود تا اجرا نشود.
-- [ ] **معیار قبولی:** اجرای سبز Actions روی main و یک APK دانلودشدنی در artifact به نام `SortView-debug-apk`.
+### فاز ۰ — راه‌اندازی مخزن و CI (✅ تکمیل شد — 2026-11-27)
+- [x] اسکلت اندروید (Kotlin 2.0.21 + AGP 8.7.3 + Compose BOM 2024.12.01، minSdk 26 / target & compileSdk 35) ساخته شد؛ MainActivity فعلاً صفحه «سلام» است.
+- [x] ورک‌فلو `build-apk.yml` در `.github/workflows/` فعال شد (JDK 17، Gradle 8.10.2، `assembleDebug`، آپلود artifact) — افزوده‌شدن دستی به‌سبب محدودیت مجوز ورک‌فلو در ابزار گیت‌هابِ دستیار.
+- [x] `ci.yml` ویندوزی قدیمی موضوعیت ندارد (مخزن testSortView تازه ساخته شده و چنین فایلی در ریشه ندارد).
+- [x] سورس دسکتاپ: به‌جای fork کامل (مجوز آن میسر نبود)، مخزن مرجع `mohammadjafari-dev/SortView` دست‌نخورده می‌ماند و `desktop/README.md` به آن اشاره می‌کند.
+- [x] **معیار قبولی (سبز شد):** اجرای #1 «Debug APK» روی کامیت `90e6da9` با موفقیت کامل به پایان رسید (~۳ دقیقه) و گام «Upload APK artifact» با `if-no-files-found: error` پاس شد ⇒ artifact `SortView-debug-apk` تولید شد.
 
 ### فاز ۱ — هسته دسته‌بندی (قلب برنامه؛ قابل استفاده واقعی برای عکس‌ها)
 - [ ] مجوز دسترسی کامل: `MANAGE_EXTERNAL_STORAGE` (API 30+ با صفحه تنظیمات «All files access»؛ API ≤29 با READ/WRITE runtime).
@@ -141,6 +138,7 @@ testSortView/
 | کدک‌های نادر ویدیو (wmv/flv/ts و…) در Media3 پخش نمی‌شوند | پیام وضعیت واضح + «پخش با برنامه‌ی دیگر»؛ تامبنیل این‌ها با کارت نوع |
 | گریدهای چند‌هزارتایی و حافظه | Coil + LazyGrid + تامبنیل با اندازه ثابت + اولویت‌دهی موارد قابل مشاهده |
 | CI بیلد اندروید | بدون Gradle Wrapper در فاز ۰ (setup-gradle نسخه ثابت 8.10.2)؛ wrapper بعداً اضافه می‌شود |
+| محدودیت مجوز ورک‌فلو در ابزار دستیار | فایل‌های `.github/workflows/*` با ویرایش دستی در گیت‌هاب افزوده می‌شوند؛ سایر فایل‌ها از طریق ابزار |
 | فارسی و RTL در نام فایل‌ها و رابط | از ابتدا `supportsRtl="true"` و تست با نام‌های فارسی |
 
 ## 8. نقشه کد دسکتاپ (مرجع پورت — desktop/main.py، 4068 خط)
