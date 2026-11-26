@@ -18,7 +18,7 @@ import java.io.FileOutputStream
 /**
  * One category — the exact desktop JSON shape {"name": str, "path": str}
  * (compatibility contract #2). Round-trips with desktop config.json and
- * category_sets/*.json untouched.
+ * category sets (category_sets) untouched.
  */
 data class Category(val name: String, val path: String)
 

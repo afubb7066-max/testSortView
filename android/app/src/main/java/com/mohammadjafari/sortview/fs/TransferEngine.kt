@@ -50,7 +50,7 @@ class TransferEngine(
 
     private val _events = kotlinx.coroutines.flow.MutableSharedFlow<TransferEvent>(
         extraBufferCapacity = 256,
-        onBufferOverflow = kotlinx.coroutines.flow.BufferOverflow.DROP_OLDEST,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val events: kotlinx.coroutines.flow.SharedFlow<TransferEvent> = _events
 
