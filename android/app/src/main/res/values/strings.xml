@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SortView</string>
+    <string name="skeleton_status">Android port skeleton — CI build OK</string>
+</resources>
