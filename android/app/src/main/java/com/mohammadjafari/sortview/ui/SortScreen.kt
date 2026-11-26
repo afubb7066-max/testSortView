@@ -1,6 +1,7 @@
 package com.mohammadjafari.sortview.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,12 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -53,12 +58,16 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.mohammadjafari.sortview.R
 import com.mohammadjafari.sortview.data.Category
+import com.mohammadjafari.sortview.media.MediaGroup
+import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * Main sorting screen — the three desktop panels folded into one mobile
@@ -71,6 +80,12 @@ import com.mohammadjafari.sortview.data.Category
 fun SortScreen(vm: SortViewModel) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
+
+    // Requested thumbnail resolution in real pixels: the desktop generates
+    // thumbs at its thumb_size setting (default 168) and scales them into
+    // the tile; the tile height in pixels is the same intent on mobile.
+    val density = LocalDensity.current
+    val thumbPx = remember(density) { with(density) { 132.dp.toPx().roundToInt() } }
 
     Column(
         modifier = Modifier
@@ -166,7 +181,7 @@ fun SortScreen(vm: SortViewModel) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 108.dp),
             modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
+            contentPadding = PaddingValues(8.dp),
         ) {
             items(st.files, key = { it.path }) { file ->
                 FileTile(
@@ -174,6 +189,9 @@ fun SortScreen(vm: SortViewModel) {
                     selected = file.path in st.selection,
                     moving = file.path in st.movingPaths,
                     failed = file.path in st.errorPaths,
+                    thumbLoader = vm::loadThumbnail,
+                    thumbPx = thumbPx,
+                    thumbGeneration = st.thumbGeneration,
                     onClick = { vm.onTileTap(file.path) },
                     onLongClick = { vm.onTileLongPress(file.path) },
                 )
@@ -269,6 +287,17 @@ private fun statsSummary(st: SortUiState, context: android.content.Context): Str
 private val MovingBg = Color(0xFFFFF5CC)
 private val FailedBg = Color(0xFFFFDDDD)
 
+/**
+ * One grid tile. Rendering policy (desktop L2815-2838 / L2964):
+ *  - image group: Coil loads the real image; while decoding or on failure
+ *    the gradient type card shows first, exactly like the desktop inserts
+ *    an immediate type-card icon and swaps in the real thumbnail later;
+ *  - video / pdf / archive: the thumbnail engine resolves the real preview
+ *    (visible tiles ask first — off-screen tiles are not composed);
+ *  - everything else: the gradient type card is the final render.
+ * Real previews letterbox with ContentScale.Fit = desktop
+ * pix.scaled(size, size, KEEP_ASPECT, SMOOTH).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileTile(
@@ -276,6 +305,9 @@ private fun FileTile(
     selected: Boolean,
     moving: Boolean,
     failed: Boolean,
+    thumbLoader: suspend (SortFile, Int) -> Bitmap?,
+    thumbPx: Int,
+    thumbGeneration: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -300,31 +332,29 @@ private fun FileTile(
             )
             .height(132.dp),
     ) {
-        if (file.isImage) {
-            coil.compose.AsyncImage(
-                model = java.io.File(file.path),
+        if (file.group == MediaGroup.IMAGE) {
+            SubcomposeAsyncImage(
+                model = File(file.path),
                 contentDescription = file.name,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
+                loading = { TypeCard(file, Modifier.fillMaxSize()) },
+                error = { TypeCard(file, Modifier.fillMaxSize()) },
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(8.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = file.ext.uppercase(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            val bmpState = produceState<Bitmap?>(null, file.path, thumbGeneration) {
+                value = thumbLoader(file, thumbPx)
+            }
+            val bmp = bmpState.value
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = file.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
                 )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = file.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            } else {
+                TypeCard(file, Modifier.fillMaxSize())
             }
         }
         if (selected) {
@@ -333,6 +363,63 @@ private fun FileTile(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Gradient fallback card — the Compose redraw of generate_type_card_bytes
+ * (desktop main.py L921-976): vertical gradient in the group colors, soft
+ * white inner overlay, white border, the extension in big type and the
+ * group label below it. The desktop blends pre-drawn icon assets on top of
+ * this design; those PNG assets are not shipped with the Android port, so
+ * the card always uses the documented gradient fallback. Like the desktop
+ * GROUP_STYLE labels (L343-353), the card label is not translated, and a
+ * file without an extension shows the group label as its big text (L962).
+ */
+@Composable
+private fun TypeCard(file: SortFile, modifier: Modifier = Modifier) {
+    val group = file.group
+    Box(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    0f to Color(group.topColor),
+                    1f to Color(group.bottomColor),
+                ),
+            )
+            .border(2.dp, Color.White.copy(alpha = 68f / 255f), RoundedCornerShape(10.dp)),
+    ) {
+        // Soft inner overlay (desktop rounded_rectangle fill white 18/255).
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(Color.White.copy(alpha = 18f / 255f)),
+        )
+        Column(
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = file.ext.ifEmpty { group.cardLabel }.uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = group.cardLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = file.name,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

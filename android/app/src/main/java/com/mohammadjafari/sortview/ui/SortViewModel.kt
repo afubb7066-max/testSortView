@@ -1,6 +1,7 @@
 package com.mohammadjafari.sortview.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mohammadjafari.sortview.R
@@ -12,6 +13,9 @@ import com.mohammadjafari.sortview.data.normalizeCategories
 import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.fs.TransferEngine
 import com.mohammadjafari.sortview.fs.TransferEvent
+import com.mohammadjafari.sortview.media.MediaGroup
+import com.mohammadjafari.sortview.media.ThumbnailEngine
+import com.mohammadjafari.sortview.media.groupForExtension
 import com.mohammadjafari.sortview.scan.FolderScanner
 import com.mohammadjafari.sortview.scan.ScanError
 import com.mohammadjafari.sortview.scan.ScanException
@@ -31,11 +35,12 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
 
-/** Extensions that get a thumbnail in Phase 1; everything else becomes a type card (Phase 2 upgrades them). */
-val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "heif", "avif", "tif", "tiff")
-
-/** One file row in the grid. */
-data class SortFile(val path: String, val name: String, val isImage: Boolean) {
+/**
+ * One file row in the grid. [group] comes from the desktop grouping tables
+ * (media/MediaTypes.kt, main.py L308-315/L835-853) and decides whether the
+ * tile shows a real thumbnail (video/PDF/archive) or a gradient type card.
+ */
+data class SortFile(val path: String, val name: String, val group: MediaGroup) {
     val ext: String = Paths.splitName(name).second.drop(1)
 }
 
@@ -50,6 +55,9 @@ data class SortUiState(
     val files: List<SortFile> = emptyList(),
     val scanning: Boolean = false,
     val foundCount: Int = 0,
+    // thumbnail generation — bumped on every rescan like the desktop's
+    // _thumbnail_generation (main.py L2846); produceState keys on it
+    val thumbGeneration: Int = 0,
     // status line
     val status: StatusMessage? = null,
     // selection
@@ -74,10 +82,11 @@ data class SortUiState(
 )
 
 /**
- * Phase 1 core: folder scanning, image grid, category management with the
- * 0-9 shortcuts, the safe transfer engine and the undo round — all behavior
- * mirrored from desktop/main.py (upstream v1.10.3), see the per-method
- * comments for the exact line references.
+ * Phase 1 core (folder scanning, image grid, category management with the
+ * 0-9 shortcuts, the safe transfer engine and the undo round) plus the
+ * Phase 2 thumbnail engine — all behavior mirrored from desktop/main.py
+ * (upstream v1.10.3), see the per-method comments for the exact line
+ * references.
  */
 class SortViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -87,6 +96,7 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     private val engine = TransferEngine(viewModelScope, app)
     private val undo = UndoCoordinator()
+    private val thumbs = ThumbnailEngine(app)
 
     private val _state = MutableStateFlow(SortUiState())
     val state: StateFlow<SortUiState> = _state
@@ -189,6 +199,11 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     private fun scanFolder() {
         val folder = _state.value.candidateFolder
         scanJob?.cancel()
+        // Desktop load_files bumps _scan_generation and _thumbnail_generation
+        // here (L2846): in-flight thumbnails from the old list must not leak
+        // into the new one.
+        thumbs.invalidate()
+        _state.update { it.copy(thumbGeneration = it.thumbGeneration + 1) }
         scanJob = viewModelScope.launch(Dispatchers.IO) {
             if (folder.isEmpty()) {
                 _state.update {
@@ -258,8 +273,20 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun File.toSortFile(): SortFile {
         val suffix = Paths.splitName(name).second
-        return SortFile(path = absolutePath, name = name, isImage = suffix.drop(1).lowercase() in IMAGE_EXTS)
+        return SortFile(path = absolutePath, name = name, group = groupForExtension(suffix.drop(1)))
     }
+
+    // ---------------- thumbnails (Phase 2, main.py L1152-1273) ----------------
+
+    /**
+     * Lazy thumbnail loader for the grid tiles. Compose only composes
+     * visible tiles, so per-tile on-demand loading IS the desktop's
+     * "visible thumbnails first, rest in background" queue
+     * (main.py L3002-3051) collapsed into one mechanism. Images are not
+     * routed through here — Coil covers them with its own caches.
+     */
+    suspend fun loadThumbnail(file: SortFile, reqPx: Int): Bitmap? =
+        thumbs.thumbnailFor(file.path, file.ext, reqPx)
 
     // ---------------- folder picker (main.py L3919) ----------------
 
