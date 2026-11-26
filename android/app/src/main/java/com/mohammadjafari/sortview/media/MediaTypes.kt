@@ -37,6 +37,27 @@ val CODE_EXTS = setOf("py", "js", "ts", "html", "css", "json", "xml", "yaml", "y
 /** The executable group lives inline in group_for_extension (desktop L849). */
 val EXE_EXTS = setOf("exe", "msi", "bat", "cmd", "ps1", "sh")
 
+/**
+ * The open-outside-the-app guard list — exact port of the desktop
+ * EXECUTABLE_OPEN_EXTS (main.py L3967-3971). Deliberately broader than
+ * EXE_EXTS: a ".py"/".js" belongs to the CODE group for display, yet
+ * opening it with a system handler still deserves the explicit
+ * "Run this file?" confirmation (main.py L3382-3405).
+ */
+val EXECUTABLE_OPEN_EXTS = setOf(
+    "exe", "bat", "cmd", "com", "scr", "ps1", "msi", "lnk",
+    "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "jar",
+    "url", "reg", "pif", "chm", "cpl", "msc", "docm", "xlsm",
+    "py", "pyw",
+)
+
+/**
+ * Files the Phase 3 preview renders as line-numbered text (ROADMAP فاز ۳
+ * extra; the desktop panel shows only the gradient card for these): the
+ * CODE group plus subtitles plus the plain-text members of DOC.
+ */
+val TEXT_PREVIEW_EXTS = CODE_EXTS + SUBTITLE_EXTS + setOf("txt", "md", "log")
+
 /** Archive-bomb guard: never read more than this from one archive entry (desktop L322). */
 const val MAX_ARCHIVE_IMAGE_BYTES = 64L * 1024 * 1024
 

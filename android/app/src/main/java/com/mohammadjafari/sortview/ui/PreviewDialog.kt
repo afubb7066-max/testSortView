@@ -242,28 +242,30 @@ private fun VideoPane(vm: SortViewModel, file: SortFile) {
             }
         }
     } else {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply { useController = false }
-            },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize(),
-        )
-        PlaybackControls(
-            player = player,
-            onRestart = {
-                player.setMediaItem(item)
-                player.prepare()
-                player.play()
-            },
-            onStop = {
-                // stop() is asynchronous (desktop comment L1808-1810): clear
-                // the media too so the file handle drops immediately.
-                player.stop()
-                player.clearMediaItems()
-                stopped = true
-            },
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply { useController = false }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+            PlaybackControls(
+                player = player,
+                onRestart = {
+                    player.setMediaItem(item)
+                    player.prepare()
+                    player.play()
+                },
+                onStop = {
+                    // stop() is asynchronous (desktop comment L1808-1810): clear
+                    // the media too so the file handle drops immediately.
+                    player.stop()
+                    player.clearMediaItems()
+                    stopped = true
+                },
+            )
+        }
     }
 }
 
