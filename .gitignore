@@ -1,0 +1,23 @@
+# --- Android build outputs ---
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/*.iml
+android/.kotlin/
+*.apk.idsig
+
+# --- Desktop source (moved to desktop/) ---
+desktop/.build-venv/
+desktop/bin/
+desktop/build/
+desktop/dist/
+desktop/user_data/
+desktop/__pycache__/
+*.pyc
+
+# --- Misc ---
+.DS_Store
+Thumbs.db
