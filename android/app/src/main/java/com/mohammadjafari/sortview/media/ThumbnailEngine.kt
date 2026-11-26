@@ -276,9 +276,9 @@ class ThumbnailEngine(context: Context) {
     private fun copyFirstSevenZImage(file: File, out: File): Boolean {
         val sz = SevenZFile(file)
         try {
-            val entries = sz.entries
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
+            // commons-compress 1.27: getEntries() yields an Iterable, not a
+            // Java Enumeration.
+            for (entry in sz.entries) {
                 if (!isImageName(entry.name)) continue
                 val size = entry.size
                 if (size <= 0 || size > MAX_ARCHIVE_IMAGE_BYTES) continue

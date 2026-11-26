@@ -1,5 +1,6 @@
 package com.mohammadjafari.sortview.ui
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

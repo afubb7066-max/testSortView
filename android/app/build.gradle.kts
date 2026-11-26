@@ -13,8 +13,8 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     buildTypes {
@@ -55,4 +55,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
+    // Phase 2 thumbnails: commons-compress provides the archive first-image
+    // previews for tar/tar.gz (the desktop's tarfile module) and 7z (the
+    // desktop's py7zr). zip rides java.util.zip. RAR stays on the type card,
+    // exactly like the portable desktop build without unrar (main.py L1094);
+    // junrar remains an optional later upgrade (ROADMAP mapping table).
+    implementation("org.apache.commons:commons-compress:1.27.1")
 }
