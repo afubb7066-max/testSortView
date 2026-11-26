@@ -100,4 +100,21 @@
     <string name="msg_undone_back_moved">برگشت: {n} فایل به اکسپلورر برگشت، {m} مورد قبلاً دستی جابه‌جا شده بود</string>
     <string name="msg_nothing_still_in_category">چیزی برگردانده نشد — فایل‌ها هنوز در پوشه‌ی دسته هستند</string>
     <string name="msg_nothing_no_longer_in_category">چیزی برگردانده نشد — فایل‌ها دیگر در پوشه‌ی دسته نیستند</string>
+
+    <!-- preview (فاز ۳ — همان کلیدها و همان متن‌های فارسی app_i18n.py) -->
+    <string name="preview_title">پیش‌نمایش</string>
+    <string name="btn_play">پخش</string>
+    <string name="btn_pause">توقف موقت</string>
+    <string name="btn_stop">توقف</string>
+    <string name="btn_open_with_system">پخش با برنامه‌ی خود سیستم</string>
+    <string name="msg_playing_embedded">در حال پخش (پخش‌کننده‌ی داخلی)</string>
+    <string name="msg_playing_audio_embedded">در حال پخش صدا (پخش‌کننده‌ی داخلی)</string>
+    <string name="msg_opened_with_system">با برنامه‌ی خود سیستم باز شد</string>
+    <string name="dlg_run_file_title">اجرای این فایل؟</string>
+    <string name="dlg_run_file_body">این فایل شبیه یک برنامه است ({name}). با این حال باز شود؟</string>
+    <string name="msg_opening_cancelled">باز کردن لغو شد</string>
+    <string name="err_cannot_open">باز کردن ممکن نیست: {e}</string>
+    <string name="err_cannot_preview_image">پیش‌نمایش عکس ممکن نیست</string>
+    <string name="err_cannot_preview_gif">پیش‌نمایش GIF ممکن نیست</string>
+    <string name="err_video_playback_failed">پخش ویدیو ناموفق بود</string>
 </resources>
