@@ -16,11 +16,15 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <!-- Framework theme on purpose: the skeleton has no com.google.android.material
-             dependency (that library owns the Theme.Material3 XML styles); the real UI
-             is drawn entirely by Compose MaterialTheme inside MainActivity. -->
+        <!-- Framework theme on purpose: no com.google.android.material
+             dependency (that library owns the Theme.Material3 XML styles); the
+             real UI is drawn entirely by Compose MaterialTheme inside MainActivity. -->
+        <!-- requestLegacyExternalStorage: on Android 10 devices the classic
+             READ/WRITE pair then gives File-based access to shared storage,
+             matching the desktop's plain-filesystem behavior. -->
 
         <activity
             android:name=".MainActivity"

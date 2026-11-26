@@ -1,4 +1,103 @@
 <resources>
-    <string name="app_name">سورت‌ویو</string>
-    <string name="skeleton_status">اسکلت پورت اندروید — بیلد CI موفق</string>
+    <!-- Persian translations copied verbatim from the desktop FA table
+         (desktop/app_i18n.py). Android-specific strings (marked) follow the
+         same tone. RTL layout follows the fa locale automatically. -->
+    <string name="app_name">SortView</string>
+
+    <!-- header / left panel -->
+    <string name="btn_change_folder">تغییر پوشه</string>
+    <string name="btn_refresh">بازخوانی</string>
+    <string name="no_folder_selected">هیچ پوشه‌ای انتخاب نشده — روی تغییر پوشه کلیک کن</string>
+    <string name="recursive_suffix">"  • زیرپوشه‌ها هم"</string>
+
+    <!-- right panel / categories -->
+    <string name="panel_categories">دسته‌ها</string>
+    <string name="action_edit">ویرایش</string>
+    <string name="action_remove">حذف</string>
+    <string name="action_move_up">جابه‌جایی به بالا</string>
+    <string name="action_move_down">جابه‌جایی به پایین</string>
+    <string name="btn_add_category">+ افزودن دسته</string>
+    <string name="btn_cancel_transfers">لغو انتقال‌ها</string>
+    <string name="btn_undo_move">برگرداندن انتقال</string>
+    <string name="undo_cd">فایل‌های آخرین انتقال را به پوشه‌ی قبلی‌شان برمی‌گرداند (Ctrl+Z)</string>
+    <string name="hint_categories_tap">ضربه: انتقال فایل‌های انتخابی • لمس دراز: ویرایش / حذف / جابه‌جایی</string>
+
+    <!-- status bar -->
+    <string name="status_total_n">کل: {n}</string>
+    <string name="status_found_n">پیدا شده: {n}</string>
+    <string name="status_busy_yes">مشغول: بله</string>
+    <string name="status_busy_no">مشغول: خیر</string>
+    <string name="status_done_n">انجام‌شده: {n}</string>
+    <string name="status_queued_n">در صف: {n}</string>
+    <string name="status_failed_n">ناموفق: {n}</string>
+    <string name="status_active_n">فعال: {n}</string>
+
+    <!-- folder picker / category dialog -->
+    <string name="picker_title">انتخاب پوشه</string>
+    <string name="btn_select">انتخاب پوشه</string>
+    <string name="field_path">مسیر</string>
+    <string name="field_name">نام</string>
+    <string name="picker_parent">بالا</string>
+    <string name="chk_recursive">شامل فایل‌های زیرپوشه‌ها (بازگشتی)</string>
+    <string name="chk_recursive_hint">با تیک: فایل‌های داخل همه‌ی زیرپوشه‌ها هم لیست می‌شوند. بدون تیک: فقط فایل‌های خود همین پوشه.</string>
+    <string name="err_invalid_folder">پوشه نامعتبر</string>
+    <string name="err_path_not_folder">مسیر انتخاب‌شده پوشه نیست.</string>
+    <string name="dlg_add_category">افزودن دسته</string>
+    <string name="dlg_edit_category">ویرایش دسته</string>
+    <string name="err_path_empty">مسیر نمی‌تواند خالی باشد.</string>
+    <string name="err_path_relative">لطفاً یک مسیر کامل وارد کنید (مثلاً {example}).</string>
+    <string name="untitled">بدون نام</string>
+    <string name="no_category_title">بدون دسته</string>
+    <string name="err_no_category_assigned">به کلید {k} دسته‌ای اختصاص داده نشده است</string>
+    <string name="action_ok">تأیید</string>
+    <string name="action_cancel">انصراف</string>
+
+    <!-- selection (Android-specific) -->
+    <string name="sel_count">انتخاب‌شده: {n}</string>
+    <string name="sel_select_all">انتخاب همه</string>
+    <string name="sel_clear">پاک کردن</string>
+
+    <!-- permission gate (Android-specific) -->
+    <string name="perm_title">نیاز به دسترسی به همه‌ی فایل‌ها</string>
+    <string name="perm_body">سورت‌ویو برای اسکن پوشه‌ها و جابه‌جایی فایل‌ها به دسترسی «همه‌ی فایل‌ها» نیاز دارد. اجازه را در صفحه‌ی بعد بدهید و برگردید.</string>
+    <string name="perm_grant">دادن دسترسی به همه‌ی فایل‌ها</string>
+
+    <!-- scanning / status -->
+    <string name="msg_please_select_folder">لطفاً اول یک پوشه انتخاب کن</string>
+    <string name="msg_scanning_folder">در حال اسکن پوشه...</string>
+    <string name="msg_folder_not_exist">پوشه وجود ندارد یا مسیر انتخاب‌شده پوشه نیست</string>
+    <string name="msg_ready">آماده</string>
+    <string name="msg_scan_failed">اسکن ناموفق بود</string>
+
+    <!-- moving files -->
+    <string name="msg_moving_name">در حال انتقال {name}...</string>
+    <string name="msg_no_files_selected">فایلی انتخاب نشده</string>
+    <string name="msg_invalid_category_index">اندیس دسته نامعتبر است</string>
+    <string name="msg_category_path_empty">مسیر دسته خالی است</string>
+    <string name="msg_preparing_transfer">در حال آماده‌سازی انتقال...</string>
+    <string name="msg_queued_n">{n} انتقال در صف قرار گرفت</string>
+    <string name="msg_skipped_n">"، {n} مورد رد شد"</string>
+    <string name="msg_no_new_files_queued">فایل جدیدی در صف قرار نگرفت</string>
+    <string name="msg_no_files_queued">فایلی در صف قرار نگرفت</string>
+    <string name="msg_moved_as_name">منتقل شد با نام {name}</string>
+    <string name="msg_transfer_finished">انتقال تمام شد</string>
+    <string name="msg_error_moving">خطا در انتقال {name}: {err}</string>
+    <string name="msg_cancellation_requested">درخواست لغو انتقال‌ها ثبت شد</string>
+    <string name="msg_cancelled">لغو شد</string>
+    <string name="msg_source_missing">فایل مبدأ وجود ندارد</string>
+    <string name="msg_already_in_destination">فایل از قبل در پوشه مقصد است</string>
+    <string name="msg_copy_size_mismatch">حجم نسخه‌ی کپی‌شده با مبدأ نمی‌خواند — فایل مبدأ حذف نشد</string>
+    <string name="msg_category_added">دسته اضافه شد</string>
+    <string name="msg_category_edited">دسته ویرایش شد</string>
+    <string name="msg_category_removed">دسته حذف شد</string>
+    <string name="msg_category_order_changed">ترتیب دسته‌ها عوض شد</string>
+
+    <!-- undo -->
+    <string name="msg_nothing_to_undo">چیزی برای برگرداندن نیست</string>
+    <string name="msg_undoing_last_move">در حال برگرداندن آخرین انتقال...</string>
+    <string name="msg_undone_back_n">برگشت: {n} فایل به اکسپلورر برگشت</string>
+    <string name="msg_undone_restored_kept">برگشت: {n} فایل بازگشت، {m} مورد در پوشه‌ی دسته ماند</string>
+    <string name="msg_undone_back_moved">برگشت: {n} فایل به اکسپلورر برگشت، {m} مورد قبلاً دستی جابه‌جا شده بود</string>
+    <string name="msg_nothing_still_in_category">چیزی برگردانده نشد — فایل‌ها هنوز در پوشه‌ی دسته هستند</string>
+    <string name="msg_nothing_no_longer_in_category">چیزی برگردانده نشد — فایل‌ها دیگر در پوشه‌ی دسته نیستند</string>
 </resources>

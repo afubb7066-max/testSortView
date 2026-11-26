@@ -1,4 +1,103 @@
 <resources>
+    <!-- Canonical strings are the exact English texts used by the desktop
+         (desktop/app_i18n.py keys). The {x} placeholders are desktop-style
+         and are filled by ui/I18n.kt, NOT by Android's %1$s formatter. -->
     <string name="app_name">SortView</string>
-    <string name="skeleton_status">Android port skeleton — CI build OK</string>
+
+    <!-- header / left panel -->
+    <string name="btn_change_folder">Change folder</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="no_folder_selected">No folder selected — click \'Change folder\'</string>
+    <string name="recursive_suffix">"  • recursive"</string>
+
+    <!-- right panel / categories -->
+    <string name="panel_categories">Categories</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+    <string name="btn_add_category">+ Add Category</string>
+    <string name="btn_cancel_transfers">Cancel transfers</string>
+    <string name="btn_undo_move">Undo move</string>
+    <string name="undo_cd">Move the files of the last transfer back to their original folder (Ctrl+Z)</string>
+    <string name="hint_categories_tap">Tap: move selected files • Long-press: edit / remove / reorder</string>
+
+    <!-- status bar -->
+    <string name="status_total_n">Total: {n}</string>
+    <string name="status_found_n">Found: {n}</string>
+    <string name="status_busy_yes">Busy: Yes</string>
+    <string name="status_busy_no">Busy: No</string>
+    <string name="status_done_n">Done: {n}</string>
+    <string name="status_queued_n">Queued: {n}</string>
+    <string name="status_failed_n">Failed: {n}</string>
+    <string name="status_active_n">Active: {n}</string>
+
+    <!-- folder picker / category dialog -->
+    <string name="picker_title">Select folder</string>
+    <string name="btn_select">Select</string>
+    <string name="field_path">Path</string>
+    <string name="field_name">Name</string>
+    <string name="picker_parent">Up</string>
+    <string name="chk_recursive">Include files from subfolders (recursive)</string>
+    <string name="chk_recursive_hint">Checked: files inside all subfolders are listed too. Unchecked: only the files of this folder.</string>
+    <string name="err_invalid_folder">Invalid folder</string>
+    <string name="err_path_not_folder">Selected path is not a folder.</string>
+    <string name="dlg_add_category">Add Category</string>
+    <string name="dlg_edit_category">Edit Category</string>
+    <string name="err_path_empty">Path cannot be empty.</string>
+    <string name="err_path_relative">Please enter an absolute path (for example {example}).</string>
+    <string name="untitled">Untitled</string>
+    <string name="no_category_title">No category</string>
+    <string name="err_no_category_assigned">No category assigned to {k}</string>
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- selection (Android-specific) -->
+    <string name="sel_count">Selected: {n}</string>
+    <string name="sel_select_all">Select all</string>
+    <string name="sel_clear">Clear</string>
+
+    <!-- permission gate (Android-specific) -->
+    <string name="perm_title">Access to all files needed</string>
+    <string name="perm_body">SortView needs \"All files access\" to scan folders and move files. Grant it in the next screen, then come back.</string>
+    <string name="perm_grant">Grant access to all files</string>
+
+    <!-- scanning / status -->
+    <string name="msg_please_select_folder">Please select a folder first</string>
+    <string name="msg_scanning_folder">Scanning folder...</string>
+    <string name="msg_folder_not_exist">Folder does not exist or is not a directory</string>
+    <string name="msg_ready">Ready</string>
+    <string name="msg_scan_failed">Scan failed</string>
+
+    <!-- moving files -->
+    <string name="msg_moving_name">Moving {name}...</string>
+    <string name="msg_no_files_selected">No files selected</string>
+    <string name="msg_invalid_category_index">Invalid category index</string>
+    <string name="msg_category_path_empty">Category path is empty</string>
+    <string name="msg_preparing_transfer">Preparing transfer...</string>
+    <string name="msg_queued_n">Queued {n} transfer(s)</string>
+    <string name="msg_skipped_n">", skipped {n}"</string>
+    <string name="msg_no_new_files_queued">No new files queued</string>
+    <string name="msg_no_files_queued">No files queued</string>
+    <string name="msg_moved_as_name">Moved as {name}</string>
+    <string name="msg_transfer_finished">Transfer finished</string>
+    <string name="msg_error_moving">Error moving {name}: {err}</string>
+    <string name="msg_cancellation_requested">Cancellation requested for transfers</string>
+    <string name="msg_cancelled">Cancelled</string>
+    <string name="msg_source_missing">Source file does not exist</string>
+    <string name="msg_already_in_destination">File is already in the destination folder</string>
+    <string name="msg_copy_size_mismatch">Copy size mismatch — the original file was kept</string>
+    <string name="msg_category_added">Category added</string>
+    <string name="msg_category_edited">Category edited</string>
+    <string name="msg_category_removed">Category removed</string>
+    <string name="msg_category_order_changed">Category order changed</string>
+
+    <!-- undo -->
+    <string name="msg_nothing_to_undo">Nothing to undo</string>
+    <string name="msg_undoing_last_move">Undoing last move...</string>
+    <string name="msg_undone_back_n">Undone: {n} file(s) back in the explorer</string>
+    <string name="msg_undone_restored_kept">Undone: {n} file(s) restored, {m} kept in the category folder</string>
+    <string name="msg_undone_back_moved">Undone: {n} file(s) back in the explorer, {m} had already been moved by hand</string>
+    <string name="msg_nothing_still_in_category">Nothing was restored — the files are still in the category folder</string>
+    <string name="msg_nothing_no_longer_in_category">Nothing was restored — the files are no longer in the category folder</string>
 </resources>
