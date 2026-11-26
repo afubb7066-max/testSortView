@@ -100,4 +100,21 @@
     <string name="msg_undone_back_moved">Undone: {n} file(s) back in the explorer, {m} had already been moved by hand</string>
     <string name="msg_nothing_still_in_category">Nothing was restored — the files are still in the category folder</string>
     <string name="msg_nothing_no_longer_in_category">Nothing was restored — the files are no longer in the category folder</string>
+
+    <!-- preview (Phase 3, desktop preview panel / app_i18n.py keys) -->
+    <string name="preview_title">Preview</string>
+    <string name="btn_play">Play</string>
+    <string name="btn_pause">Pause</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_open_with_system">Open with system player</string>
+    <string name="msg_playing_embedded">Playing (embedded player)</string>
+    <string name="msg_playing_audio_embedded">Playing audio (embedded player)</string>
+    <string name="msg_opened_with_system">Opened with the system player</string>
+    <string name="dlg_run_file_title">Run this file?</string>
+    <string name="dlg_run_file_body">This file looks like a program ({name}). Open it anyway?</string>
+    <string name="msg_opening_cancelled">Opening cancelled</string>
+    <string name="err_cannot_open">Cannot open: {e}</string>
+    <string name="err_cannot_preview_image">Cannot preview image</string>
+    <string name="err_cannot_preview_gif">Cannot preview GIF</string>
+    <string name="err_video_playback_failed">Video playback failed</string>
 </resources>
