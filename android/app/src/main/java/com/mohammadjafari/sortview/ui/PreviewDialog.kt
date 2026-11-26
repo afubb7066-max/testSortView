@@ -242,6 +242,8 @@ private fun VideoPane(vm: SortViewModel, file: SortFile) {
             }
         }
     } else {
+        // Column so the controls sit BELOW the video surface (a Box would
+        // overlay them on the picture's top-left corner).
         Column(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { ctx ->
