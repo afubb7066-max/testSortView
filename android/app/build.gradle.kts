@@ -13,8 +13,8 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -62,4 +62,10 @@ dependencies {
     // exactly like the portable desktop build without unrar (main.py L1094);
     // junrar remains an optional later upgrade (ROADMAP mapping table).
     implementation("org.apache.commons:commons-compress:1.27.1")
+
+    // Phase 3 preview: Media3/ExoPlayer replaces the desktop's Qt Multimedia
+    // + libVLC + ffplay stack (ROADMAP mapping table). Video loops forever
+    // (REPEAT_MODE_ONE == setLoops(-1)), audio plays without a video surface.
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
 }
