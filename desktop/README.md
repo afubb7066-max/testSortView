@@ -4,15 +4,17 @@
 
 ## سورس دسکتاپ کجاست؟
 
-| چه چیزی | کجا |
-|---|---|
-| مخزن اصلی (authoritative) | https://github.com/mohammadjafari-dev/SortView |
-| فورک حفظ‌شده در این اکانت — **کل تاریخچهٔ git + همهٔ فایل‌ها** (`main.py`، `app_i18n.py`، `tests/`، `assets/`، `docs/`، `BUILD.bat`، ورک‌فلوی قدیمی و…) | https://github.com/afubb7066-max/SortView |
+مخزن اصلی و مرجع (authoritative):
 
-## چرا سورس دسکتاپ مستقیماً داخل همین مخزن کپی نشد؟
+**https://github.com/mohammadjafari-dev/SortView** — تگ `v1.10.3`
+همهٔ فایل‌ها همان‌جاست: `main.py`، `app_i18n.py`، `requirements.txt`، `tests/`، `assets/`، `docs/`، `BUILD.bat`، `CHANGELOG.md`، `README.fa.md` و ورک‌فلوی CI قدیمی.
 
-فاز ۰ در این اجرا با GitHub API انجام شد (بدون دسترسی git محلی)؛ انتقال تاریخچهٔ git و فایل‌های حجیم مثل `main.py` (حدود ۱۸۶ کیلوبایت) از طریق API ممکن نبود. در عوض، **فورک کامل** مخزن اصلی در `afubb7066-max/SortView` ساخته شد که همان محتوا را با کل تاریخچه و attribution نویسنده (بند ۸ قرارداد سازگاری) یک‌جا نگه می‌دارد؛ به‌جای کپیِ ناقص، فورکِ کامل مرجع شد.
+## چرا سورس دسکتاپ داخل همین مخزن کپی نشد؟
+
+فاز ۰ در این اجرا با GitHub API انجام شد (بدون دسترسی git محلی)؛ انتقال تاریخچهٔ git و فایل‌های حجیم مثل `main.py` (حدود ۱۸۶ کیلوبایت) از طریق API ممکن نبود و ساخت فورک در این اکانت هم با دسترسی فعلی اپلیکیشن مجاز نشد. پس مرجعِ رفتاریِ پورت، خودِ مخزن اصلی روی تگ `v1.10.3` است؛ تاریخچهٔ کامل و attribution نویسنده همان‌جا حفظ شده است (بند ۸ قرارداد سازگاری).
+
+اگر بخواهید تاریخچهٔ git هم داخل این اکانت کپی شود، از صفحهٔ مخزن اصلی دکمهٔ **Fork** را بزنید (یک کلیک) و سپس این یادداشت را به‌روز کنید.
 
 نقشهٔ خط‌به‌خط کد دسکتاپ برای پورت: بخش ۸ [`ROADMAP.md`](../ROADMAP.md).
 
-> The desktop reference implementation (Python/PyQt6) lives in the upstream repo and its full-history fork above. This folder is a pointer that keeps the planned repository layout of ROADMAP.md §5.
+> The desktop reference implementation (Python/PyQt6) lives in the upstream repo, tag v1.10.3. This folder is a pointer that keeps the planned repository layout of ROADMAP.md §5.
