@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for "Open with system player" (media/SystemPlayer.kt).
+     The browsed files live on shared storage (/storage/emulated/0/...),
+     which external-path covers; files/cache cover app-private temp copies. -->
+<paths>
+    <external-path name="external_storage" path="." />
+    <files-path name="internal_files" path="." />
+    <cache-path name="internal_cache" path="." />
+</paths>
