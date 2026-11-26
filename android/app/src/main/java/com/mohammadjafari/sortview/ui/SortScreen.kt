@@ -66,7 +66,9 @@ import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.mohammadjafari.sortview.R
 import com.mohammadjafari.sortview.data.Category
+import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.media.MediaGroup
+import com.mohammadjafari.sortview.media.groupForExtension
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -170,6 +172,14 @@ fun SortScreen(vm: SortViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
+                // Exactly one file picked: its preview is one tap away
+                // (mobile stand-in for the always-visible desktop preview
+                // panel; double-tap on a tile opens it as well).
+                if (st.selection.size == 1) {
+                    TextButton(onClick = { vm.openPreview(st.selection.first()) }) {
+                        Text(stringResource(R.string.preview_title))
+                    }
+                }
                 TextButton(onClick = { vm.selectAll() }) { Text(stringResource(R.string.sel_select_all)) }
                 TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.sel_clear)) }
                 IconButton(onClick = { vm.exitSelectionMode() }) {
@@ -194,6 +204,10 @@ fun SortScreen(vm: SortViewModel) {
                     thumbPx = thumbPx,
                     thumbGeneration = st.thumbGeneration,
                     onClick = { vm.onTileTap(file.path) },
+                    // Double-tap = the desktop's itemDoubleClicked mapping is
+                    // the embedded preview here (the dialog itself carries
+                    // the "Open with system player" button).
+                    onDoubleClick = { vm.openPreview(file.path) },
                     onLongClick = { vm.onTileLongPress(file.path) },
                 )
             }
@@ -253,6 +267,21 @@ fun SortScreen(vm: SortViewModel) {
     if (st.categoryDialogFor != null) {
         CategoryDialog(vm, st)
     }
+
+    // --- Phase 3: full-screen preview dialog (desktop preview panel parity) ---
+    st.previewPath?.let { p ->
+        val pf = st.files.firstOrNull { it.path == p } ?: run {
+            // The file just left the list (e.g. a transfer finished); build
+            // the row on the spot so the dialog can still render it.
+            val f = File(p)
+            SortFile(
+                path = f.absolutePath,
+                name = f.name,
+                group = groupForExtension(Paths.splitName(f.name).second.drop(1)),
+            )
+        }
+        PreviewDialog(vm, pf, st.thumbGeneration)
+    }
 }
 
 @Composable
@@ -310,6 +339,7 @@ private fun FileTile(
     thumbPx: Int,
     thumbGeneration: Int,
     onClick: () -> Unit,
+    onDoubleClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(10.dp)
@@ -323,7 +353,11 @@ private fun FileTile(
             .padding(4.dp)
             .clip(shape)
             .background(bg)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                onClick = onClick,
+                onDoubleClick = onDoubleClick,
+                onLongClick = onLongClick,
+            )
             .then(
                 if (selected) {
                     Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape)
@@ -380,7 +414,7 @@ private fun FileTile(
  * file without an extension shows the group label as its big text (L962).
  */
 @Composable
-private fun TypeCard(file: SortFile, modifier: Modifier = Modifier) {
+internal fun TypeCard(file: SortFile, modifier: Modifier = Modifier) {
     val group = file.group
     Box(
         modifier = modifier

@@ -13,6 +13,7 @@ import com.mohammadjafari.sortview.data.normalizeCategories
 import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.fs.TransferEngine
 import com.mohammadjafari.sortview.fs.TransferEvent
+import com.mohammadjafari.sortview.media.AUDIO_EXTS
 import com.mohammadjafari.sortview.media.MediaGroup
 import com.mohammadjafari.sortview.media.ThumbnailEngine
 import com.mohammadjafari.sortview.media.groupForExtension
@@ -79,6 +80,8 @@ data class SortUiState(
     val categoryDialogFor: Int? = null, // -1 = add, >= 0 = edit index
     val categoryDialogError: StatusMessage? = null,
     val categoryMenuFor: Int? = null,
+    // Phase 3: full-screen preview dialog (desktop preview panel parity).
+    val previewPath: String? = null,
 )
 
 /**
@@ -436,6 +439,55 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------------- preview (Phase 3, desktop show_preview L3446) ----------------
+
+    /**
+     * Open the full-screen preview dialog. Video/audio auto-play immediately
+     * like the desktop preview panel (show_preview L3449-3464), so the
+     * status line reports the embedded player just like the desktop does
+     * (L3232 / L3324).
+     */
+    fun openPreview(path: String) {
+        val f = File(path)
+        if (!f.isFile) return
+        val ext = Paths.splitName(f.name).second.drop(1).lowercase()
+        _state.update {
+            it.copy(
+                previewPath = path,
+                status = statusOf(
+                    if (ext in AUDIO_EXTS) {
+                        R.string.msg_playing_audio_embedded
+                    } else {
+                        R.string.msg_playing_embedded
+                    },
+                ),
+            )
+        }
+    }
+
+    /**
+     * Close the preview. The dialog leaving composition releases the
+     * Media3 player and its file handle (desktop _reset_preview L3146).
+     */
+    fun closePreview() {
+        _state.update { it.copy(previewPath = null) }
+    }
+
+    /** Desktop L3401: the user answered No to the "Run this file?" guard. */
+    fun notifyOpeningCancelled() {
+        _state.update { it.copy(status = statusOf(R.string.msg_opening_cancelled)) }
+    }
+
+    /** Desktop L3422 (open_selected_with_system_player success path). */
+    fun notifyOpenedWithSystemPlayer() {
+        _state.update { it.copy(status = statusOf(R.string.msg_opened_with_system)) }
+    }
+
+    /** Desktop L3984 (open_file catch) and L3427: "Cannot open: {e}". */
+    fun notifyCannotOpen(err: String) {
+        _state.update { it.copy(status = statusOf(R.string.err_cannot_open, "e" to err)) }
+    }
+
     // ---------------- selection ----------------
 
     fun onTileTap(path: String) {
@@ -495,11 +547,16 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         }
         moveEnqueuePending = true
         _state.update { it.copy(status = statusOf(R.string.msg_preparing_transfer)) }
-        try {
-            // The desktop waits 200 ms here to let VLC release file handles;
-            // Phase 1 has no preview player, so the enqueue runs directly.
-            doEnqueue(st.selection.toList(), dst)
-        } finally {
+        // Desktop L3615-3635: snapshot the selection FIRST — it may change
+        // during the short release delay — close the preview so the media
+        // player drops the file handle, then wait 200 ms before enqueueing
+        // (player stop/release is asynchronous; a locked file would fail the
+        // move). The 200 ms QTimer.singleShot parity lives in the coroutine.
+        val srcList = st.selection.toList()
+        if (st.previewPath != null) closePreview()
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(200)
+            doEnqueue(srcList, dst)
             moveEnqueuePending = false
         }
     }
