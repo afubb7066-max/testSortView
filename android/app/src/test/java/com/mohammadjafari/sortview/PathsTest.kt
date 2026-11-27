@@ -71,8 +71,18 @@ class PathsTest {
             assertFalse(u1.exists())
             u1.createNewFile()
             assertEquals("photo (2).jpg", Paths.uniqueDestination(base).name)
-            // Reserved (in-flight) names collide like existing ones.
-            val u2 = Paths.uniqueDestination(base, setOf(File(dir, "photo (3).jpg").absolutePath))
+            // Reserved (in-flight) names collide like existing ones: with
+            // (2) and (3) both held by in-flight transfers, the next free
+            // name is (4). Desktop parity: unique_destination returns the
+            // first candidate that neither exists nor is reserved (main.py
+            // L1340-1350), so a free (2) WINS over a reserved (3).
+            val u2 = Paths.uniqueDestination(
+                base,
+                setOf(
+                    File(dir, "photo (2).jpg").absolutePath,
+                    File(dir, "photo (3).jpg").absolutePath,
+                ),
+            )
             assertEquals("photo (4).jpg", u2.name)
         } finally {
             dir.deleteRecursively()
