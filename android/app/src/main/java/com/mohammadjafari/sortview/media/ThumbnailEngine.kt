@@ -8,6 +8,7 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -51,6 +52,13 @@ import java.util.zip.ZipFile
  * the background (main.py L3002-3051). A LazyGrid only composes visible
  * tiles, so on-demand loading per composed tile IS the visible-first
  * policy — off-screen tiles load when scrolled into view.
+ *
+ * v1.0.1 hardening: [thumbnailFor] catches **Throwable** (not just
+ * Exception) around the whole decode path. The first real-device test
+ * crashed while opening a folder of photos/videos; a huge video frame or
+ * poster PDF allocating an ARGB_8888 bitmap can throw OutOfMemoryError on
+ * a low-memory phone — an Error, which the inner Exception-only guards do
+ * not cover. Failing back to the type card always beats crashing the app.
  */
 class ThumbnailEngine(context: Context) {
 
@@ -82,9 +90,22 @@ class ThumbnailEngine(context: Context) {
      * The single entry point the grid tiles call. Returns the real preview
      * bitmap for video/PDF/archive files, or null when the file belongs on
      * a type card (unknown types, unsupported codecs, corrupt archives,
-     * failed decodes — same fallback chain as the desktop).
+     * failed decodes — same fallback chain as the desktop). Any Throwable
+     * outside cancellation lands on the type card (v1.0.1 hardening).
      */
     suspend fun thumbnailFor(path: String, ext: String, reqPx: Int): Bitmap? = withContext(Dispatchers.IO) {
+        try {
+            thumbnailForInner(path, ext, reqPx)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Even an Error (OutOfMemoryError decoding a 4K frame on a
+            // low-memory device) must end as a type card, never a crash.
+            null
+        }
+    }
+
+    private suspend fun thumbnailForInner(path: String, ext: String, reqPx: Int): Bitmap? = withContext(Dispatchers.IO) {
         val file = File(path)
         val e = ext.lowercase().removePrefix(".")
         val canPreview = e == "pdf" || playsAsVideo(file, e) || e in ARCHIVE_EXTS
@@ -334,8 +355,8 @@ class ThumbnailEngine(context: Context) {
     /**
      * Same key composition as desktop thumb_cache_key (main.py L791-799):
      * resolved path | mtime | size | requested size, plus a scheme tag
-     * instead of the desktop's "qt6-v4". The SHA1 is only a cache key,
-     * never a security primitive.
+     * instead of the desktop's "qt6-v4". The SHA1 is only a cache key, never a
+     * security primitive.
      */
     private fun cacheKey(file: File, reqPx: Int): String {
         val src = try {
