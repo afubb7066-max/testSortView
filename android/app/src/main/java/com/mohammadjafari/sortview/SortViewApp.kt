@@ -6,7 +6,7 @@ import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
-import coil.decode.ImageDecoder
+import coil.decode.ImageDecoderDecoder
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -45,14 +45,14 @@ class SortViewApp : Application(), ImageLoaderFactory {
      * v1.0.2: register the animated-image decoders. The bare coil-compose
      * dependency decodes only the FIRST frame of a GIF; with coil-gif on
      * the classpath this loader animates GIFs (desktop QMovie parity,
-     * main.py L3468) — ImageDecoder (also animated WebP/HEIF) on API 28+,
-     * the pure-Java GifDecoder on API 26-27 (minSdk).
+     * main.py L3468) — ImageDecoderDecoder (also animated WebP/HEIF) on
+     * API 28+, the pure-Java GifDecoder on API 26-27 (minSdk).
      */
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .components {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    add(ImageDecoder.Factory())
+                    add(ImageDecoderDecoder.Factory())
                 } else {
                     add(GifDecoder.Factory())
                 }
