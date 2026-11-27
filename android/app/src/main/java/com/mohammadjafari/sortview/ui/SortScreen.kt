@@ -1,6 +1,8 @@
 package com.mohammadjafari.sortview.ui
 
 import android.graphics.Bitmap
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -35,7 +37,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -69,6 +73,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,11 +100,16 @@ import kotlin.math.roundToInt
  * circle redraws theme_color_icon (L395-433) as a two-colour circle; the
  * desktop combo boxes map to dropdown menus and dialogs.
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class,
+    ExperimentalMaterial3Api::class,
+)
 @Composable
 fun SortScreen(vm: SortViewModel) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
+    val view = LocalView.current
 
     // Applied tile size: the desktop applies the slider value after its
     // 280 ms timer (L2443), so the grid and the thumbnail decode size
@@ -120,6 +130,7 @@ fun SortScreen(vm: SortViewModel) {
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (e.isCtrlPressed && e.key == Key.Z) {
+                    confirmHaptic(view)
                     vm.undoLastMove()
                     return@onPreviewKeyEvent true
                 }
@@ -137,6 +148,7 @@ fun SortScreen(vm: SortViewModel) {
                     else -> -1
                 }
                 if (digit >= 0) {
+                    confirmHaptic(view)
                     vm.onDigit(digit)
                     true
                 } else {
@@ -277,29 +289,37 @@ fun SortScreen(vm: SortViewModel) {
             }
         }
 
-        // --- file grid ---
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = thumbDp),
+        // --- file grid; pull-to-refresh is the mobile stand-in for the
+        // desktop Refresh button: the drag triggers a full rescan and
+        // the indicator spins until st.scanning clears ---
+        PullToRefreshBox(
+            isRefreshing = st.scanning,
+            onRefresh = { vm.refresh() },
             modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(8.dp),
         ) {
-            items(st.files, key = { it.path }) { file ->
-                FileTile(
-                    file = file,
-                    selected = file.path in st.selection,
-                    moving = file.path in st.movingPaths,
-                    failed = file.path in st.errorPaths,
-                    thumbLoader = vm::loadThumbnail,
-                    thumbPx = thumbPx,
-                    thumbGeneration = st.thumbGeneration,
-                    tileHeight = thumbDp,
-                    onClick = { vm.onTileTap(file.path) },
-                    // Double-tap = the desktop's itemDoubleClicked mapping is
-                    // the embedded preview here (the dialog itself carries
-                    // the "Open with system player" button).
-                    onDoubleClick = { vm.openPreview(file.path) },
-                    onLongClick = { vm.onTileLongPress(file.path) },
-                )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = thumbDp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(8.dp),
+            ) {
+                items(st.files, key = { it.path }) { file ->
+                    FileTile(
+                        file = file,
+                        selected = file.path in st.selection,
+                        moving = file.path in st.movingPaths,
+                        failed = file.path in st.errorPaths,
+                        thumbLoader = vm::loadThumbnail,
+                        thumbPx = thumbPx,
+                        thumbGeneration = st.thumbGeneration,
+                        tileHeight = thumbDp,
+                        onClick = { vm.onTileTap(file.path) },
+                        // Double-tap = the desktop's itemDoubleClicked mapping is
+                        // the embedded preview here (the dialog itself carries
+                        // the "Open with system player" button).
+                        onDoubleClick = { vm.openPreview(file.path) },
+                        onLongClick = { vm.onTileLongPress(file.path) },
+                    )
+                }
             }
         }
 
@@ -313,7 +333,10 @@ fun SortScreen(vm: SortViewModel) {
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
-                        onClick = { vm.undoLastMove() },
+                        onClick = {
+                            confirmHaptic(view)
+                            vm.undoLastMove()
+                        },
                         enabled = st.canUndo,
                     ) { Text(stringResource(R.string.btn_undo_move)) }
                     if (st.busy) {
@@ -338,7 +361,10 @@ fun SortScreen(vm: SortViewModel) {
                             menuOpen = st.categoryMenuFor == idx,
                             onDismissMenu = { vm.dismissCategoryMenu() },
                             onAction = { action -> vm.onCategoryMenuAction(action, idx) },
-                            onClick = { vm.onCategoryTap(idx) },
+                            onClick = {
+                                confirmHaptic(view)
+                                vm.onCategoryTap(idx)
+                            },
                             onLongClick = { vm.openCategoryMenu(idx) },
                         )
                     }
@@ -389,6 +415,22 @@ fun SortScreen(vm: SortViewModel) {
         }
         PreviewDialog(vm, pf, st.thumbGeneration)
     }
+}
+
+/**
+ * Short confirm pulse for file-moving actions (digit dispatch, category
+ * tap, undo) — the mobile stand-in for the desktop status-line
+ * feedback. Long-press selection already vibrates through
+ * combinedClickable.
+ */
+private fun confirmHaptic(view: android.view.View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackConstants.CONFIRM
+        } else {
+            HapticFeedbackConstants.KEYBOARD_TAP
+        },
+    )
 }
 
 /** Desktop combo labels for the six THEMES keys (app_i18n.py strings). */
