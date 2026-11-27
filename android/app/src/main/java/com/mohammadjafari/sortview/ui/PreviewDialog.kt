@@ -570,22 +570,30 @@ private fun PdfPagerPane(file: SortFile) {
     }
 }
 
-/** Render one PDF page on a worker thread; PdfRenderer itself is not thread-safe. */
-private fun renderPdfPage(renderer: PdfRenderer, index: Int): Bitmap? = try {
-    synchronized(renderer) {
-        renderer.openPage(index).use { page ->
-            val maxSide = maxOf(page.width, page.height).coerceAtLeast(1)
-            val scale = PDF_PAGE_PX.toFloat() / maxSide
-            val w = (page.width * scale).toInt().coerceIn(1, 2000)
-            val h = (page.height * scale).toInt().coerceIn(1, 2000)
-            Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
-                // Pre-fill white so transparent PDF backgrounds look like paper.
-                eraseColor(android.graphics.Color.WHITE)
-            }.also { page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
+/**
+ * Render one PDF page on a worker thread; PdfRenderer itself is not
+ * thread-safe. Takes the nullable holder state directly — Kotlin cannot
+ * smart-cast a delegated property (var by remember), so the null check
+ * lives in here instead of at the call site.
+ */
+private fun renderPdfPage(renderer: PdfRenderer?, index: Int): Bitmap? {
+    val r = renderer ?: return null
+    return try {
+        synchronized(r) {
+            r.openPage(index).use { page ->
+                val maxSide = maxOf(page.width, page.height).coerceAtLeast(1)
+                val scale = PDF_PAGE_PX.toFloat() / maxSide
+                val w = (page.width * scale).toInt().coerceIn(1, 2000)
+                val h = (page.height * scale).toInt().coerceIn(1, 2000)
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+                    // Pre-fill white so transparent PDF backgrounds look like paper.
+                    eraseColor(android.graphics.Color.WHITE)
+                }.also { page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
+            }
         }
+    } catch (_: Exception) {
+        null
     }
-} catch (_: Exception) {
-    null
 }
 
 // ---------------- text / code / subtitle (ROADMAP فاز ۳ extra) ----------------
