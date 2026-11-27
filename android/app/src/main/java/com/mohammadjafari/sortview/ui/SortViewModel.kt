@@ -2,14 +2,17 @@ package com.mohammadjafari.sortview.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mohammadjafari.sortview.R
 import com.mohammadjafari.sortview.data.AppConfigStore
 import com.mohammadjafari.sortview.data.Category
+import com.mohammadjafari.sortview.data.CategorySets
 import com.mohammadjafari.sortview.data.SortConfig
 import com.mohammadjafari.sortview.data.UndoCoordinator
 import com.mohammadjafari.sortview.data.normalizeCategories
+import com.mohammadjafari.sortview.fs.Filters
 import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.fs.TransferEvent
 import com.mohammadjafari.sortview.fs.TransferHub
@@ -21,6 +24,7 @@ import com.mohammadjafari.sortview.scan.FolderScanner
 import com.mohammadjafari.sortview.scan.ScanError
 import com.mohammadjafari.sortview.scan.ScanException
 import com.mohammadjafari.sortview.transfer.TransferService
+import com.mohammadjafari.sortview.ui.theme.SortThemes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -83,6 +87,21 @@ data class SortUiState(
     val categoryMenuFor: Int? = null,
     // Phase 3: full-screen preview dialog (desktop preview panel parity).
     val previewPath: String? = null,
+    // Phase 4: category sets + thumbnail cache + about (tool dialogs).
+    val setSaveDialog: Boolean = false,
+    val setLoadDialog: Boolean = false,
+    val setFiles: List<String> = emptyList(),
+    val pendingLoadSet: String? = null,
+    val confirmClearThumbs: Boolean = false,
+    val showAbout: Boolean = false,
+    // Phase 4: session view state. The desktop keeps the filter text and
+    // the sort mode on its widgets and does NOT persist them in config.json
+    // (main.py L2260-2265); thumb_size IS persisted (L2098).
+    val filterText: String = "",
+    val sortByName: Boolean = true,
+    val thumbSize: Int = Paths.DEFAULT_THUMB,
+    // Phase 4: config-backed theme (desktop THEMES keys, default "dark").
+    val theme: String = "dark",
 )
 
 /**
@@ -106,6 +125,7 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = TransferHub.engine(app)
     private val undo = UndoCoordinator()
     private val thumbs = ThumbnailEngine(app)
+    private val sets = CategorySets(app)
 
     private val _state = MutableStateFlow(SortUiState())
     val state: StateFlow<SortUiState> = _state
@@ -142,6 +162,8 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
                 lastBrowseDir = cfg.lastBrowseDir,
                 includeSubfolders = cfg.includeSubfolders,
                 categories = normalizeCategories(cfg.categories),
+                thumbSize = cfg.thumbSize.coerceIn(THUMB_MIN, THUMB_MAX),
+                theme = if (SortThemes.isKnown(cfg.theme)) cfg.theme else "dark",
             )
         }
         saveConfig()
@@ -273,7 +295,12 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val buffer = mutableListOf<SortFile>()
                 var found = 0
+                // Desktop parses the filter at scan start (L2876) and drops
+                // non-matching files at found-time (L2891) — "Found: {n}"
+                // counts only kept files, exactly like len(_scan_buffer).
+                val exts = Filters.parseExtensionFilter(_state.value.filterText)
                 FolderScanner().scan(File(folder), _state.value.includeSubfolders) { f ->
+                    if (exts.isNotEmpty() && Filters.suffixOf(f.name) !in exts) return@scan
                     found++
                     if (found % 100 == 0) {
                         // "Found: {n}" every 100 files (desktop L2893).
@@ -283,8 +310,11 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     buffer.add(f.toSortFile())
                 }
-                // Natural name sort, desktop default "Name" mode (L1304/L2902).
-                val files = buffer.sortedWith { a, b -> Paths.compareNatural(a.name, b.name) }
+                // Desktop L2900-2902: Name = natural key; Type = suffix
+                // first, natural name inside the group. The sort mode also
+                // triggers a full rescan when switched (L2437).
+                val mode = if (_state.value.sortByName) Filters.Mode.NAME else Filters.Mode.TYPE
+                val files = buffer.sortedWith(Comparator { a, b -> Filters.compare(a.name, b.name, mode) })
                 _state.update { it.copy(scanning = false, files = files) }
                 val after = statusAfterRescan
                 statusAfterRescan = null
@@ -315,7 +345,266 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         return SortFile(path = absolutePath, name = name, group = groupForExtension(suffix.drop(1)))
     }
 
-    // ---------------- thumbnails (Phase 2, main.py L1152-1273) ----------------
+    // ---------------- view state: filter / sort / thumb size (Phase 4) ----------------
+
+    /**
+     * Desktop filter row (main.py L2259-2266) with its 350 ms single-shot
+     * timer (L2440-2442): every committed change re-runs load_files —
+     * here a full [scanFolder]. Equal text is ignored (the first UI
+     * emission after composition carries the restored value).
+     */
+    fun applyFilter(text: String) {
+        if (text == _state.value.filterText) return
+        _state.update { it.copy(filterText = text) }
+        scanFolder()
+    }
+
+    /**
+     * Desktop sort combo (main.py L2264, L2437): switching Name/Type runs
+     * load_files() — a full rescan, not an in-place re-sort.
+     */
+    fun setSortByName(name: Boolean) {
+        if (name == _state.value.sortByName) return
+        _state.update { it.copy(sortByName = name) }
+        scanFolder()
+    }
+
+    /**
+     * Desktop thumb slider (main.py L2271-2277, apply timer L2443-2445,
+     * 280 ms): update the tile size and persist thumb_size. No rescan is
+     * needed — the grid recomposes and thumbnails regenerate at the
+     * requested size (their cache key includes reqPx).
+     */
+    fun setThumbSize(size: Int) {
+        val v = size.coerceIn(THUMB_MIN, THUMB_MAX)
+        if (v == cfg.thumbSize) return
+        cfg = cfg.copy(thumbSize = v)
+        _state.update { it.copy(thumbSize = v) }
+        saveConfig()
+    }
+
+    /**
+     * Desktop theme combo (main.py L2212, L2506): apply + persist. Unknown
+     * keys fall back to "dark" exactly like apply_theme (L2452-2453).
+     */
+    fun setTheme(key: String) {
+        val v = if (SortThemes.isKnown(key)) key else "dark"
+        if (v == cfg.theme) return
+        cfg = cfg.copy(theme = v)
+        _state.update { it.copy(theme = v) }
+        saveConfig()
+    }
+
+    // ---------------- category sets (main.py L2728-2781) ----------------
+
+    fun startSaveCategorySet() {
+        _state.update { it.copy(setSaveDialog = true) }
+    }
+
+    fun dismissSaveCategorySet() {
+        _state.update { it.copy(setSaveDialog = false) }
+    }
+
+    /**
+     * save_category_set (L2728): writes filesDir/category_sets/<stem>.json
+     * with the SAME JSON shape the desktop writes (contract #3); the saved
+     * file name is reported in the status like the desktop message.
+     */
+    fun saveCategorySet(name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) {
+            _state.update { it.copy(setSaveDialog = false) }
+            return
+        }
+        try {
+            val fp = sets.save(clean, _state.value.categories)
+            _state.update {
+                it.copy(
+                    setSaveDialog = false,
+                    status = statusOf(R.string.msg_set_saved, "name" to fp.name),
+                )
+            }
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(
+                    setSaveDialog = false,
+                    status = statusOf(R.string.err_set_save, "e" to (e.message ?: e.toString())),
+                )
+            }
+        }
+    }
+
+    /**
+     * load_category_set opening step (L2738-2744): no saved sets -> the
+     * "No saved category sets found." message; otherwise the picker opens.
+     */
+    fun startLoadCategorySet() {
+        val files = sets.list()
+        if (files.isEmpty()) {
+            _state.update { it.copy(status = statusOf(R.string.err_no_sets)) }
+            return
+        }
+        _state.update { it.copy(setLoadDialog = true, setFiles = files) }
+    }
+
+    fun dismissLoadCategorySet() {
+        _state.update { it.copy(setLoadDialog = false, pendingLoadSet = null) }
+    }
+
+    /** A set was chosen — next comes "Replace existing categories or merge?" (L2750-2751). */
+    fun chooseCategorySet(fileName: String) {
+        _state.update { it.copy(pendingLoadSet = fileName) }
+    }
+
+    fun cancelReplaceMerge() {
+        _state.update { it.copy(pendingLoadSet = null) }
+    }
+
+    /**
+     * load_category_set apply step (L2746-2757): normalize decides validity,
+     * then Replace (list swap) or Merge (normalize(existing + new)); the
+     * result is persisted like the desktop _save_config.
+     */
+    fun applyCategorySet(replace: Boolean) {
+        val st = _state.value
+        val fileName = st.pendingLoadSet ?: return
+        try {
+            val newCats = sets.read(fileName)
+            if (newCats.isEmpty()) {
+                _state.update {
+                    it.copy(
+                        pendingLoadSet = null,
+                        setLoadDialog = false,
+                        status = statusOf(R.string.err_set_no_valid),
+                    )
+                }
+                return
+            }
+            val merged = if (replace) newCats else normalizeCategories(st.categories + newCats)
+            _state.update {
+                it.copy(
+                    categories = merged,
+                    pendingLoadSet = null,
+                    setLoadDialog = false,
+                    status = statusOf(R.string.msg_set_loaded),
+                )
+            }
+            saveConfig()
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(
+                    pendingLoadSet = null,
+                    setLoadDialog = false,
+                    status = statusOf(R.string.err_set_load, "e" to (e.message ?: e.toString())),
+                )
+            }
+        }
+    }
+
+    /** export_category_set_to_file (L2761): SAF CREATE_DOCUMENT target. */
+    fun exportCategorySetTo(uri: Uri) {
+        try {
+            sets.exportTo(uri, _state.value.categories)
+            val name = uri.lastPathSegment ?: uri.toString()
+            _state.update { it.copy(status = statusOf(R.string.msg_exported_to, "path" to name)) }
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(status = statusOf(R.string.err_set_export, "e" to (e.message ?: e.toString())))
+            }
+        }
+    }
+
+    /**
+     * import_category_set_from_file (L2771): always MERGES into the current
+     * list (normalize(existing + imported)) — desktop parity.
+     */
+    fun importCategorySetFrom(uri: Uri) {
+        try {
+            val newCats = sets.importFrom(uri)
+            if (newCats.isEmpty()) {
+                _state.update { it.copy(status = statusOf(R.string.err_set_no_valid_file)) }
+                return
+            }
+            val merged = normalizeCategories(_state.value.categories + newCats)
+            _state.update {
+                it.copy(
+                    categories = merged,
+                    status = statusOf(R.string.msg_imported_n, "n" to newCats.size),
+                )
+            }
+            saveConfig()
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(status = statusOf(R.string.err_set_import, "e" to (e.message ?: e.toString())))
+            }
+        }
+    }
+
+    // ---------------- thumbnail cache + about (main.py L3885) ----------------
+
+    fun startClearThumbnailCache() {
+        _state.update { it.copy(confirmClearThumbs = true) }
+    }
+
+    fun dismissClearThumbnailCache() {
+        _state.update { it.copy(confirmClearThumbs = false) }
+    }
+
+    /**
+     * clear_thumbnail_cache apply step (L3895-3913): wipe both cache
+     * levels — [ThumbnailEngine.invalidate] for the memory LRU plus the
+     * disk level at the engine's documented layout (cacheDir/thumbs,
+     * ThumbnailEngine.kt) — report "Thumbnail cache cleared: {n} files,
+     * {mb} MB" and reload the list so thumbs regenerate (desktop L3913).
+     */
+    fun clearThumbnailCache() {
+        _state.update { it.copy(confirmClearThumbs = false) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val cacheDir = File(getApplication<Application>().cacheDir, "thumbs")
+                var deleted = 0
+                var total = 0L
+                cacheDir.mkdirs()
+                for (f in cacheDir.listFiles() ?: emptyArray()) {
+                    try {
+                        if (f.isFile) {
+                            total += f.length()
+                            if (f.delete()) deleted++
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+                thumbs.invalidate()
+                val mb = String.format(java.util.Locale.US, "%.1f", total / (1024.0 * 1024.0))
+                withContext(Dispatchers.Main.immediate) {
+                    _state.update {
+                        it.copy(status = statusOf(R.string.msg_thumb_cleared, "n" to deleted, "mb" to mb))
+                    }
+                }
+                // Desktop reloads the list afterwards (L3913).
+                scanFolder()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main.immediate) {
+                    _state.update {
+                        it.copy(
+                            status = statusOf(
+                                R.string.err_thumb_clear,
+                                "e" to (e.message ?: e.toString()),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun showAbout() {
+        _state.update { it.copy(showAbout = true) }
+    }
+
+    fun dismissAbout() {
+        _state.update { it.copy(showAbout = false) }
+    }
 
     /**
      * Lazy thumbnail loader for the grid tiles. Compose only composes
@@ -833,6 +1122,10 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
         private const val MOVE_DEBOUNCE_S = 0.30
         private const val KEY_DEBOUNCE_S = 0.25
+
+        /** Desktop slider bounds (main.py L2272-2273). */
+        const val THUMB_MIN = 72
+        const val THUMB_MAX = 420
     }
 }
 

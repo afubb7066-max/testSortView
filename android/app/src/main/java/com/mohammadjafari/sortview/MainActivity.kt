@@ -45,6 +45,7 @@ import com.mohammadjafari.sortview.data.AppConfigStore
 import com.mohammadjafari.sortview.ui.FolderPickerScreen
 import com.mohammadjafari.sortview.ui.SortScreen
 import com.mohammadjafari.sortview.ui.SortViewModel
+import com.mohammadjafari.sortview.ui.theme.SortThemes
 import com.mohammadjafari.sortview.ui.theme.SortViewTheme
 import java.util.Locale
 
@@ -72,9 +73,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SortViewTheme {
+            // Phase 4: the palette comes from config.json ("theme", desktop
+            // default "dark") through the ViewModel state; unknown values
+            // fall back to dark exactly like the desktop apply_theme
+            // (main.py L2452-2453). The user picks one of the six desktop
+            // themes in the header menu (SortScreen).
+            val vm: SortViewModel = viewModel()
+            val st by vm.state.collectAsState()
+            SortViewTheme(themeKey = st.theme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    RootApp()
+                    RootApp(vm)
                 }
             }
         }
