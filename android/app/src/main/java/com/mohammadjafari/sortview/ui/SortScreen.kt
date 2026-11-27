@@ -1,5 +1,7 @@
 package com.mohammadjafari.sortview.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -39,6 +41,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.mohammadjafari.sortview.R
+import com.mohammadjafari.sortview.SortViewApp
 import com.mohammadjafari.sortview.data.Category
 import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.media.MediaGroup
@@ -669,7 +673,10 @@ private fun ConfirmClearThumbsDialog(vm: SortViewModel) {
 /**
  * About (contract #7): version line through the {x} resolver — the
  * desktop-style "{v}" placeholder cannot ride stringResource's %1$s
- * formatter — plus the attribution body.
+ * formatter — plus the attribution body. v1.0.1: when the in-app crash
+ * logger (SortViewApp) has recorded a crash, the latest report is shown
+ * here with Copy/Clear buttons, so a device crash can be reported to the
+ * developer straight from the phone without adb.
  */
 @Composable
 private fun AboutDialog(vm: SortViewModel) {
@@ -681,6 +688,7 @@ private fun AboutDialog(vm: SortViewModel) {
             null
         }
     }
+    var crash by remember { mutableStateOf(SortViewApp.lastCrashReport(context)) }
     AlertDialog(
         onDismissRequest = { vm.dismissAbout() },
         title = { Text(stringResource(R.string.about_title)) },
@@ -692,6 +700,42 @@ private fun AboutDialog(vm: SortViewModel) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.about_body), style = MaterialTheme.typography.bodyMedium)
+                if (crash.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(R.string.crash_section_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = crash,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        maxLines = 12,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.errorContainer)
+                            .padding(8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            try {
+                                val cm = context.getSystemService(ClipboardManager::class.java)
+                                cm?.setPrimaryClip(ClipData.newPlainText("SortView crash report", crash))
+                            } catch (_: Exception) {
+                            }
+                        }) { Text(stringResource(R.string.crash_copy)) }
+                        TextButton(onClick = {
+                            SortViewApp.clearCrashLog(context)
+                            crash = ""
+                        }) { Text(stringResource(R.string.crash_clear)) }
+                    }
+                }
             }
         },
         confirmButton = {
