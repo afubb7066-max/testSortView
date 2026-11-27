@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -24,13 +25,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
@@ -60,10 +65,12 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -103,6 +110,15 @@ import kotlin.math.roundToInt
  * slider + theme circle + tools menu (sets / cache / about). The theme
  * circle redraws theme_color_icon (L395-433) as a two-colour circle; the
  * desktop combo boxes map to dropdown menus and dialogs.
+ *
+ * v1.0.2: safeDrawing padding for Android 15 (enforced edge-to-edge on
+ * targetSdk 35), hardware back leaves selection mode first, the keyboard
+ * shortcuts step aside when the filter field has focus (desktop focus
+ * check), one tap opens the preview (the old combinedClickable
+ * onDoubleClick delayed every single tap ~300 ms — "files need several
+ * clicks"), the category chips scroll when the panel overflows, and the
+ * category dialog gained the desktop Browse button backed by the picker
+ * (PickerTarget.CATEGORY).
  */
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -114,6 +130,11 @@ fun SortScreen(vm: SortViewModel) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
     val view = LocalView.current
+
+    // Hardware back: leave selection mode first; only when nothing is
+    // active does back leave the app. The preview dialog intercepts back
+    // itself via onDismissRequest (v1.0.2 UX follow-up).
+    BackHandler(enabled = st.selectionMode) { vm.exitSelectionMode() }
 
     // Applied tile size: the desktop applies the slider value after its
     // 280 ms timer (L2443), so the grid and the thumbnail decode size
@@ -128,11 +149,20 @@ fun SortScreen(vm: SortViewModel) {
         with(density) { thumbDp.toPx().roundToInt() }
     }
 
+    // v1.0.2: while the filter text field holds focus, the root shortcut
+    // handler must NOT steal digits/keys — the desktop checks the focus
+    // widget before dispatching (main.py L4022 equivalents).
+    var filterFieldFocused by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Android 15 edge-to-edge: keep the header clear of the status
+            // and navigation bars (a no-op on older devices).
+            .safeDrawingPadding()
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (filterFieldFocused) return@onPreviewKeyEvent false
                 if (e.isCtrlPressed && e.key == Key.Z) {
                     confirmHaptic(view)
                     vm.undoLastMove()
@@ -192,7 +222,9 @@ fun SortScreen(vm: SortViewModel) {
         }
 
         // --- desktop header row2: filter field + Name/Type toggle ---
-        var filterUi by remember { mutableStateOf(st.filterText) }
+        // rememberSaveable: the typed filter survives rotation and process
+        // death (the desktop field keeps its text across redraws too).
+        var filterUi by rememberSaveable { mutableStateOf(st.filterText) }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -200,7 +232,7 @@ fun SortScreen(vm: SortViewModel) {
             OutlinedTextField(
                 value = filterUi,
                 onValueChange = { filterUi = it },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).onFocusChanged { filterFieldFocused = it.hasFocus },
                 placeholder = {
                     Text(
                         text = stringResource(R.string.filter_hint),
@@ -279,7 +311,7 @@ fun SortScreen(vm: SortViewModel) {
                 )
                 // Exactly one file picked: its preview is one tap away
                 // (mobile stand-in for the always-visible desktop preview
-                // panel; double-tap on a tile opens it as well).
+                // panel; a plain tile tap opens it as well).
                 if (st.selection.size == 1) {
                     TextButton(onClick = { vm.openPreview(st.selection.first()) }) {
                         Text(stringResource(R.string.preview_title))
@@ -316,11 +348,13 @@ fun SortScreen(vm: SortViewModel) {
                         thumbPx = thumbPx,
                         thumbGeneration = st.thumbGeneration,
                         tileHeight = thumbDp,
-                        onClick = { vm.onTileTap(file.path) },
-                        // Double-tap = the desktop's itemDoubleClicked mapping is
-                        // the embedded preview here (the dialog itself carries
-                        // the "Open with system player" button).
-                        onDoubleClick = { vm.openPreview(file.path) },
+                        // v1.0.2: ONE tap opens the preview (and selects the
+                        // file, desktop list-click parity) — the removed
+                        // double-tap handler used to delay every single tap
+                        // ~300 ms. Long-press still starts multi-select.
+                        onClick = {
+                            if (st.selectionMode) vm.onTileTap(file.path) else vm.openPreview(file.path)
+                        },
                         onLongClick = { vm.onTileLongPress(file.path) },
                     )
                 }
@@ -354,23 +388,33 @@ fun SortScreen(vm: SortViewModel) {
                         Text(stringResource(R.string.btn_add_category))
                     }
                 }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                // v1.0.2: many categories pushed the panel over the screen
+                // edge — cap it and scroll instead (desktop panel parity).
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 160.dp)
+                        .verticalScroll(rememberScrollState()),
                 ) {
-                    st.categories.forEachIndexed { idx, cat ->
-                        CategoryChip(
-                            idx = idx,
-                            cat = cat,
-                            menuOpen = st.categoryMenuFor == idx,
-                            onDismissMenu = { vm.dismissCategoryMenu() },
-                            onAction = { action -> vm.onCategoryMenuAction(action, idx) },
-                            onClick = {
-                                confirmHaptic(view)
-                                vm.onCategoryTap(idx)
-                            },
-                            onLongClick = { vm.openCategoryMenu(idx) },
-                        )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        st.categories.forEachIndexed { idx, cat ->
+                            CategoryChip(
+                                idx = idx,
+                                cat = cat,
+                                menuOpen = st.categoryMenuFor == idx,
+                                onDismissMenu = { vm.dismissCategoryMenu() },
+                                onAction = { action -> vm.onCategoryMenuAction(action, idx) },
+                                onClick = {
+                                    confirmHaptic(view)
+                                    vm.onCategoryTap(idx)
+                                },
+                                onLongClick = { vm.openCategoryMenu(idx) },
+                            )
+                        }
                     }
                 }
                 Text(
@@ -568,7 +612,7 @@ private fun ToolsMenu(vm: SortViewModel) {
 /** save_category_set dialog (desktop L2728): a plain name field. */
 @Composable
 private fun SaveSetDialog(vm: SortViewModel) {
-    var name by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = { vm.dismissSaveCategorySet() },
         title = { Text(stringResource(R.string.set_save_title)) },
@@ -790,6 +834,9 @@ private val FailedBg = Color(0xFFFFDDDD)
  * Real previews letterbox with ContentScale.Fit = desktop
  * pix.scaled(size, size, KEEP_ASPECT, SMOOTH). The tile follows the
  * Phase-4 thumb_size setting (desktop thumb slider, L2271-2277).
+ * v1.0.2: no onDoubleClick — one tap opens the preview (it also selects
+ * the file, desktop list-click parity); the combinedClickable double-tap
+ * used to delay EVERY single tap ~300 ms.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -803,7 +850,6 @@ private fun FileTile(
     thumbGeneration: Int,
     tileHeight: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit,
-    onDoubleClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(10.dp)
@@ -819,7 +865,6 @@ private fun FileTile(
             .background(bg)
             .combinedClickable(
                 onClick = onClick,
-                onDoubleClick = onDoubleClick,
                 onLongClick = onLongClick,
             )
             .then(
@@ -978,13 +1023,23 @@ private fun CategoryChip(
     }
 }
 
+/**
+ * Add/edit category dialog (desktop L2632). v1.0.2: the field state lives
+ * in the ViewModel (st.categoryDialogName / categoryDialogPath) so typing
+ * survives the folder-picker detour and rotation, and a Browse button
+ * opens the picker in CATEGORY mode — the chosen path is written back
+ * into the open dialog (desktop Browse-button parity; nobody types
+ * /storage/emulated/0/... by hand on a phone).
+ */
 @Composable
 private fun CategoryDialog(vm: SortViewModel, st: SortUiState) {
     val idx = st.categoryDialogFor ?: return
     val editing = idx >= 0
     val context = LocalContext.current
-    var name by remember(idx) { mutableStateOf(if (editing) st.categories[idx].name else "") }
-    var path by remember(idx) { mutableStateOf(if (editing) st.categories[idx].path else "") }
+    val name = st.categoryDialogName
+        ?: if (editing) st.categories.getOrNull(idx)?.name ?: "" else ""
+    val path = st.categoryDialogPath
+        ?: if (editing) st.categories.getOrNull(idx)?.path ?: "" else ""
     AlertDialog(
         onDismissRequest = { vm.dismissCategoryDialog() },
         title = { Text(stringResource(if (editing) R.string.dlg_edit_category else R.string.dlg_add_category)) },
@@ -992,17 +1047,26 @@ private fun CategoryDialog(vm: SortViewModel, st: SortUiState) {
             Column {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { vm.updateCategoryDialogName(it) },
                     label = { Text(stringResource(R.string.field_name)) },
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = path,
-                    onValueChange = { path = it },
-                    label = { Text(stringResource(R.string.field_path)) },
-                    singleLine = true,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = path,
+                        onValueChange = { vm.updateCategoryDialogPath(it) },
+                        label = { Text(stringResource(R.string.field_path)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.openCategoryFolderPicker() }) {
+                        Text(stringResource(R.string.btn_browse))
+                    }
+                }
                 st.categoryDialogError?.let { err ->
                     Spacer(Modifier.height(8.dp))
                     Text(
