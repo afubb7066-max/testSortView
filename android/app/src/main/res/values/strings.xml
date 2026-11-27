@@ -117,4 +117,14 @@
     <string name="err_cannot_preview_image">Cannot preview image</string>
     <string name="err_cannot_preview_gif">Cannot preview GIF</string>
     <string name="err_video_playback_failed">Video playback failed</string>
+
+    <!-- transfer foreground-service notification (transfer/TransferService.kt) -->
+    <string name="notif_channel_name">File transfers</string>
+    <string name="notif_channel_desc">Progress of files being moved by SortView</string>
+    <string name="notif_title">SortView — moving files</string>
+    <string name="notif_idle">SortView is ready to move files</string>
+    <string name="notif_moving">Moving {active} file(s), {queued} queued</string>
+    <string name="notif_active_only">Moving {active} file(s)</string>
+    <string name="notif_queued_only">{queued} file(s) queued</string>
+    <string name="notif_cancel">Stop</string>
 </resources>

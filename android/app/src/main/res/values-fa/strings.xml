@@ -117,4 +117,14 @@
     <string name="err_cannot_preview_image">پیش‌نمایش عکس ممکن نیست</string>
     <string name="err_cannot_preview_gif">پیش‌نمایش GIF ممکن نیست</string>
     <string name="err_video_playback_failed">پخش ویدیو ناموفق بود</string>
+
+    <!-- اعلان سرویس foreground انتقال (transfer/TransferService.kt) -->
+    <string name="notif_channel_name">انتقال فایل‌ها</string>
+    <string name="notif_channel_desc">پیشرفت جابه‌جایی فایل‌ها توسط سورت‌ویو</string>
+    <string name="notif_title">سورت‌ویو — در حال جابه‌جایی فایل‌ها</string>
+    <string name="notif_idle">سورت‌ویو آماده‌ی جابه‌جایی فایل‌ها است</string>
+    <string name="notif_moving">در حال انتقال {active} فایل، {queued} مورد در صف</string>
+    <string name="notif_active_only">در حال انتقال {active} فایل</string>
+    <string name="notif_queued_only">{queued} فایل در صف</string>
+    <string name="notif_cancel">توقف</string>
 </resources>
