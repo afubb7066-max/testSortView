@@ -534,9 +534,7 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             }
             saveConfig()
         } catch (e: Exception) {
-            _state.update {
-                it.copy(status = statusOf(R.string.err_set_import, "e" to (e.message ?: e.toString())))
-            }
+            _state.update { it.copy(status = statusOf(R.string.err_set_import, "e" to (e.message ?: e.toString()))) }
         }
     }
 
@@ -891,7 +889,16 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         // queue fills: it must be started while the app is foregrounded
         // (Android background-start restriction) and it shows the live
         // progress notification with the Stop action while the queue runs.
-        if (srcList.isNotEmpty()) TransferService.start(getApplication())
+        // A quick backgrounding between the tap and this enqueue throws
+        // ForegroundServiceStartNotAllowedException — catch it: the queue
+        // still runs in-process, only the progress notification is lost
+        // (v1.0.1 hardening).
+        if (srcList.isNotEmpty()) {
+            try {
+                TransferService.start(getApplication())
+            } catch (_: Exception) {
+            }
+        }
         var queued = 0
         var skipped = 0
         val dstF = File(dst)
