@@ -2,6 +2,7 @@ package com.mohammadjafari.sortview.fs
 
 import java.io.File
 import java.io.IOException
+import java.math.BigInteger
 
 /**
  * Pure path / naming helpers — behavioral ports of the desktop helpers in
@@ -65,13 +66,20 @@ object Paths {
         return cleaned.ifEmpty { (System.currentTimeMillis() / 1000).toString() }
     }
 
-    /** Port of natural_key (main.py L1304): digits compare as numbers, text lowercased. */
+    /**
+     * Port of natural_key (main.py L1304): digits compare as numbers, text
+     * lowercased. Digit chunks become [BigInteger]: desktop Python int is
+     * unbounded, but Int conversion threw NumberFormatException on digit
+     * runs of 10+ digits (millisecond timestamps like "1700000000000.jpg")
+     * and — swallowed by the scan's generic catch — blanked the whole
+     * folder into "scan failed".
+     */
     fun naturalKey(text: String): List<Any> {
         val parts = mutableListOf<Any>()
         var last = 0
         for (m in digits.findAll(text)) {
             if (m.range.first > last) parts.add(text.substring(last, m.range.first).lowercase())
-            parts.add(m.value.toInt())
+            parts.add(BigInteger(m.value))
             last = m.range.last + 1
         }
         if (last < text.length) parts.add(text.substring(last).lowercase())
@@ -87,7 +95,7 @@ object Paths {
             val x = ka[i]
             val y = kb[i]
             val c = when {
-                x is Int && y is Int -> x.compareTo(y)
+                x is BigInteger && y is BigInteger -> x.compareTo(y)
                 x is String && y is String -> x.compareTo(y)
                 else -> x.toString().compareTo(y.toString())
             }

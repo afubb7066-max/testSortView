@@ -10,6 +10,8 @@ import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 
 /** Events the engine emits; order mirrors the desktop signals (main.py L1469). */
@@ -28,20 +30,34 @@ class TransferCancelled(message: String) : TransferException(message)
 
 /**
  * Safe transfer engine — behavioral port of the desktop TransferManager
- * (main.py L1476-1693) with the two changes the ROADMAP records for
- * Android: no hardlink attempt (unavailable on /storage) and always the
- * copy + verify + remove path (main.py L1609):
+ * (main.py L1476-1693):
  *
  *  - a queue of (src, dst_dir) jobs served by 2 workers (desktop uses
  *    max_workers=2, main.py L2052), deduped by source path;
  *  - cancel_all drops every queued job without ever starting it and makes
- *    running jobs stop at the next chunk boundary;
+ *    running jobs stop at the next step boundary;
  *  - the destination name is reserved up front via unique_destination so
  *    concurrent workers can never collide on "name (1).ext";
- *  - the destination file is created exclusively (CREATE_NEW == O_EXCL),
- *    copied in 2 MiB chunks, fsynced, the size verified, and only then the
- *    source is deleted — nothing is ever overwritten, a size mismatch or
- *    any error removes the partial copy and keeps the source alive.
+ *  - nothing is ever overwritten: a size mismatch or any error removes the
+ *    partial copy and keeps the source alive.
+ *
+ * Move strategy, fastest first. The desktop _do_move (main.py L1652) tries
+ * its os.link fast path (L1610) before the full copy
+ * (_copy_exclusive_then_remove, main.py L1609); the Android port mirrors
+ * that fallback chain:
+ *   1. hardlink (same inode): instant, needs no extra space, and link()
+ *      never replaces an existing target, so the never-overwrite rule
+ *      holds by construction. Unsupported on FUSE/exFAT/FAT32 shared
+ *      storage — it fails fast there and the next step takes over;
+ *   2. atomic rename (same volume): atomic, no data copy. rename(2) would
+ *      silently replace the target, so the name is claimed first with an
+ *      exclusive zero-byte placeholder and the move replaces only that;
+ *      cross-volume attempts fail and fall through;
+ *   3. exclusive copy: CREATE_NEW + 2 MiB chunks + fsync + size verify,
+ *      and only then the source is deleted — the universal fallback.
+ * The engine lives in the application-scoped [TransferHub] (guarded by the
+ * com.mohammadjafari.sortview.transfer.TransferService foreground service),
+ * so transfers survive the UI being closed.
  */
 class TransferEngine(
     private val scope: CoroutineScope,
@@ -100,7 +116,7 @@ class TransferEngine(
 
     /**
      * Drop every queued (not yet started) job and cancel the active ones at
-     * the next chunk boundary. Returns the number of dropped jobs — the
+     * the next step boundary. Returns the number of dropped jobs — the
      * caller must not wait for them (desktop cancel_all L1505).
      */
     fun cancelAll(): Int {
@@ -175,7 +191,7 @@ class TransferEngine(
         synchronized(lock) { reservedDestinations.remove(dst.absolutePath) }
     }
 
-    /** Port of _do_move (main.py L1652) minus the hardlink fast path. */
+    /** Port of _do_move (main.py L1652) with the desktop's fast-path chain. */
     private fun doMove(src: String, dstDir: String, generation: Int): String {
         if (isCancelled(generation)) throw TransferCancelled(msgCancelled)
         val srcF = File(src)
@@ -185,9 +201,88 @@ class TransferEngine(
         val dst = reserveDestination(srcF, dstDirF)
         try {
             if (isCancelled(generation)) throw TransferCancelled(msgCancelled)
+            // Fast paths first; each falls through to the next on failure
+            // and the exclusive copy stays the universal fallback.
+            if (tryHardlinkThenRemove(srcF, dst, generation)) return dst.absolutePath
+            if (tryRenameSameVolume(srcF, dst, generation)) return dst.absolutePath
             return copyExclusiveThenRemove(srcF, dst, generation)
         } finally {
             releaseDestination(dst)
+        }
+    }
+
+    /**
+     * Desktop os.link fast path (main.py L1610): a same-inode hardlink is
+     * instant and needs no extra space. link() never replaces an existing
+     * target, so the never-overwrite rule holds without a race. Unsupported
+     * on FUSE/exFAT/FAT32 shared storage (EPERM / EOPNOTSUPP) — the caller
+     * falls through to the rename path.
+     */
+    private fun tryHardlinkThenRemove(srcF: File, dst: File, generation: Int): Boolean {
+        if (isCancelled(generation)) throw TransferCancelled(msgCancelled)
+        val linked = try {
+            Files.createLink(dst.toPath(), srcF.toPath())
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!linked) return false
+        try {
+            if (isCancelled(generation)) throw TransferCancelled(msgCancelled)
+            // Same inode, so the size check is a formality — kept for parity
+            // with the desktop verify step (main.py L1634).
+            if (dst.length() != srcF.length()) throw TransferException(msgSizeMismatch)
+            Paths.forceUnlink(srcF)
+            return true
+        } catch (e: Throwable) {
+            // Remove the new link; the source file itself is untouched.
+            try {
+                if (dst.exists()) Paths.forceUnlink(dst)
+            } catch (_: Exception) {
+            }
+            throw e
+        }
+    }
+
+    /**
+     * Same-volume rename fast path: atomic, no data copy, no extra space.
+     *
+     * rename(2) silently REPLACES an existing target, so this path claims
+     * the name first with an exclusive zero-byte placeholder
+     * (Files.createFile — the atomic equivalent of CREATE_NEW). The move
+     * then atomically replaces OUR OWN placeholder, never anybody else's
+     * file, so the never-overwrite rule holds without any race. If the
+     * claim fails, the name was taken by someone else and the copy path
+     * reports it cleanly; if the move fails (cross-volume, no atomic
+     * rename, ...) the placeholder is released and the copy path takes
+     * over. A completed move IS the finished transfer — no cancellation
+     * check after it, because there is no partial state to clean up.
+     */
+    private fun tryRenameSameVolume(srcF: File, dst: File, generation: Int): Boolean {
+        if (isCancelled(generation)) throw TransferCancelled(msgCancelled)
+        val claimed = try {
+            Files.createFile(dst.toPath())
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!claimed) return false
+        return try {
+            Files.move(
+                srcF.toPath(), dst.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE,
+            )
+            true
+        } catch (_: Exception) {
+            // Release the claim before falling through to the copy path;
+            // if even the delete fails, the copy path's CREATE_NEW fails on
+            // the stray placeholder and the transfer errors with the source
+            // intact — never an overwrite.
+            try {
+                Paths.forceUnlink(dst)
+            } catch (_: Exception) {
+            }
+            false
         }
     }
 

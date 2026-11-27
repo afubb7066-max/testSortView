@@ -12,6 +12,11 @@
         android:maxSdkVersion="29"
         tools:ignore="ScopedStorage" />
 
+    <!-- Foreground service that keeps file transfers alive while the app is
+         backgrounded (dataSync type required by API 34+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -46,5 +51,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Transfer keep-alive (started only while the app is in the
+             foreground, right before the enqueue loop; stops itself when
+             the queue has been idle for its grace period). -->
+        <service
+            android:name=".transfer.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
