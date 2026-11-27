@@ -131,6 +131,11 @@ class TransferService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openAppIntent())
+            // Phase 5: deterministic per-batch progress bar (file count).
+            // A multi-gigabyte queue on a phone needs a visible sense of
+            // motion; idle batches carry batchTotal == 0, which renders
+            // no bar at all.
+            .setProgress(p.batchTotal, p.batchDone, false)
             .addAction(0, resolveStatus(statusOf(R.string.notif_cancel)), cancelPendingIntent())
             .build()
     }

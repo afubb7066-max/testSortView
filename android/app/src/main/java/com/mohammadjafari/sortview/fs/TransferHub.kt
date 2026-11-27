@@ -11,8 +11,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /** Queue snapshot rendered by the foreground service notification. */
-data class TransferProgress(val queued: Int = 0, val active: Int = 0) {
+data class TransferProgress(val queued: Int = 0, val active: Int = 0, val batchTotal: Int = 0) {
     val idle: Boolean get() = queued == 0 && active == 0
+
+    /**
+     * Files already finished inside the current batch — the progress-bar
+     * numerator (Phase 5). batchTotal is a per-batch denominator heuristic:
+     * the first non-idle tick of a batch fixes it, mid-batch enqueues only
+     * grow it, and the idle tick resets it to 0 (no bar when idle).
+     */
+    val batchDone: Int get() = (batchTotal - queued - active).coerceAtLeast(0)
 }
 
 /**
@@ -58,6 +66,12 @@ object TransferHub {
     @Volatile
     private var engineRef: TransferEngine? = null
 
+    /**
+     * Per-batch denominator for the notification progress bar. Owned by the
+     * single collector coroutine below — never touched from other threads.
+     */
+    private var batchTotal = 0
+
     /** The app-lifetime engine; created lazily on first use (idempotent). */
     fun engine(context: Context): TransferEngine {
         engineRef?.let { return it }
@@ -68,8 +82,20 @@ object TransferHub {
             scope.launch {
                 engine.events.collect { ev ->
                     when (ev) {
-                        is TransferEvent.QueueUpdated ->
-                            _progress.value = TransferProgress(ev.queued, ev.active)
+                        is TransferEvent.QueueUpdated -> {
+                            // Phase 5: batch-total heuristic for the
+                            // notification progress bar (file count). The
+                            // first non-idle tick of a batch fixes the
+                            // denominator; a mid-batch enqueue only grows
+                            // it; the idle tick resets it to 0.
+                            val snap = ev.queued + ev.active
+                            if (snap == 0) {
+                                batchTotal = 0
+                            } else if (batchTotal < snap) {
+                                batchTotal = snap
+                            }
+                            _progress.value = TransferProgress(ev.queued, ev.active, batchTotal)
+                        }
                         is TransferEvent.Finished -> backlogAdd(ev.src to ev.newPath)
                         else -> Unit
                     }
