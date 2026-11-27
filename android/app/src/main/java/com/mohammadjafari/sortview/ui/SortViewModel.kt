@@ -2,6 +2,7 @@ package com.mohammadjafari.sortview.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.media.MediaScannerConnection
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -40,6 +41,14 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
+
+/**
+ * Which surface the folder picker is open FOR: the browse folder (source)
+ * or the destination path of the open category dialog (v1.0.2 — the
+ * desktop Browse button parity; nobody types /storage/emulated/0/...
+ * by hand on a phone).
+ */
+enum class PickerTarget { SOURCE, CATEGORY }
 
 /**
  * One file row in the grid. [group] comes from the desktop grouping tables
@@ -81,8 +90,14 @@ data class SortUiState(
     val canUndo: Boolean = false,
     // dialogs / menus
     val showFolderPicker: Boolean = false,
+    val pickerTarget: PickerTarget = PickerTarget.SOURCE,
     val pickerError: StatusMessage? = null,
     val categoryDialogFor: Int? = null, // -1 = add, >= 0 = edit index
+    // v1.0.2: the category dialog fields live in the state (not remember{})
+    // so typing survives the folder-picker detour (RootApp swaps screens)
+    // and rotation; null = dialog closed.
+    val categoryDialogName: String? = null,
+    val categoryDialogPath: String? = null,
     val categoryDialogError: StatusMessage? = null,
     val categoryMenuFor: Int? = null,
     // Phase 3: full-screen preview dialog (desktop preview panel parity).
@@ -147,6 +162,41 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
                 onEngineEvent(ev)
             }
         }
+        // v1.0.2: queue counters ride TransferHub.progress — a lossless
+        // StateFlow fed synchronously by the engine (the old QueueUpdated
+        // events shared a finite DROP_OLDEST buffer with the per-item
+        // outcomes and could silently drop, stalling the undo seal).
+        viewModelScope.launch {
+            TransferHub.progress.collect { p ->
+                _state.update {
+                    it.copy(queued = p.queued, active = p.active, busy = !p.idle)
+                }
+                if (p.idle) {
+                    // Queue drained — seal the open undo batch only when
+                    // every expected file reported back (desktop L3737-3745).
+                    // reconcile first: a Finished event that ever overflowed
+                    // the bounded flow is still in the hub backlog, so the
+                    // bookkeeping self-heals instead of locking Undo.
+                    reconcileOrphanedTransfers()
+                    if (undo.sealIfQueueIdle()) refreshUndoState()
+                }
+            }
+        }
+        // v1.0.2: files dropped by the notification Stop action reach the
+        // undo bookkeeping IMMEDIATELY while this ViewModel is alive —
+        // previously only a fresh ViewModel attach (takeDropped in init)
+        // or a UI-side cancel reconciled them, so a Stop pressed on the
+        // notification locked the current batch forever.
+        viewModelScope.launch {
+            TransferHub.droppedVersion.collect {
+                val dropped = TransferHub.takeDropped()
+                if (dropped > 0) {
+                    undo.openBatchIfClosed()
+                    undo.adjustDropped(dropped)
+                    if (engine.isIdle() && undo.sealIfQueueIdle()) refreshUndoState()
+                }
+            }
+        }
         // Moves finished while the UI was gone (the service kept the
         // process alive) re-enter the undo bookkeeping here; drops
         // counted by the notification Stop action reduce the expected
@@ -186,8 +236,12 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         val dropped = TransferHub.takeDropped()
         if (orphans.isEmpty() && dropped == 0) return
         undo.openBatchIfClosed()
-        undo.expect(orphans.size)
-        for ((src, dst) in orphans) onTransferFinished(src, dst)
+        // Pairs the live event collector already recorded (drain-vs-event
+        // race) must not re-enter the bookkeeping — expect() counts only
+        // the fresh ones or the batch could never seal (v1.0.2 dedup).
+        val fresh = orphans.filterNot { undo.alreadyRecorded(it.first, it.second) }
+        undo.expect(fresh.size)
+        for ((src, dst) in fresh) onTransferFinished(src, dst)
         if (dropped > 0) undo.adjustDropped(dropped)
         if (undo.sealIfQueueIdle()) refreshUndoState()
     }
@@ -616,8 +670,18 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- folder picker (main.py L3919) ----------------
 
-    fun openFolderPicker() {
-        _state.update { it.copy(showFolderPicker = true, pickerError = null) }
+    /**
+     * Open the picker. [target] decides what the selected folder means:
+     * SOURCE switches the browse folder, CATEGORY fills the path field of
+     * the open category dialog (v1.0.2 Browse-button parity).
+     */
+    fun openFolderPicker(target: PickerTarget = PickerTarget.SOURCE) {
+        _state.update { it.copy(showFolderPicker = true, pickerError = null, pickerTarget = target) }
+    }
+
+    /** The Browse button inside the category dialog (v1.0.2). */
+    fun openCategoryFolderPicker() {
+        openFolderPicker(PickerTarget.CATEGORY)
     }
 
     fun dismissFolderPicker() {
@@ -633,7 +697,34 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun applyFolderSelection(path: String, recursive: Boolean) {
+        val st = _state.value
         val trimmed = path.trim()
+        if (st.pickerTarget == PickerTarget.CATEGORY) {
+            // Destination pick for the category dialog: hand the path back
+            // to the dialog (it is still open underneath) instead of
+            // switching the browse folder (v1.0.2).
+            if (trimmed.isEmpty()) {
+                _state.update { it.copy(pickerError = statusOf(R.string.err_path_not_folder)) }
+                return
+            }
+            val f = File(trimmed)
+            if (!f.isDirectory) {
+                _state.update {
+                    it.copy(
+                        pickerError = if (f.exists()) statusOf(R.string.err_path_not_folder) else statusOf(R.string.err_invalid_folder),
+                    )
+                }
+                return
+            }
+            _state.update {
+                it.copy(
+                    categoryDialogPath = f.path,
+                    showFolderPicker = false,
+                    pickerError = null,
+                )
+            }
+            return
+        }
         if (trimmed.isEmpty()) {
             _state.update { it.copy(pickerError = statusOf(R.string.err_path_not_folder)) }
             return
@@ -644,7 +735,9 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             // desktop shows both as a modal; here the message sits inside
             // the picker next to the field.
             _state.update {
-                it.copy(pickerError = if (f.exists()) statusOf(R.string.err_path_not_folder) else statusOf(R.string.err_invalid_folder))
+                it.copy(
+                    pickerError = if (f.exists()) statusOf(R.string.err_path_not_folder) else statusOf(R.string.err_invalid_folder),
+                )
             }
             return
         }
@@ -665,17 +758,49 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------- categories (main.py L2632-2783) ----------------
 
     fun startAddCategory() {
-        _state.update { it.copy(categoryDialogFor = ADD_CATEGORY, categoryDialogError = null) }
+        _state.update {
+            it.copy(
+                categoryDialogFor = ADD_CATEGORY,
+                categoryDialogError = null,
+                categoryDialogName = "",
+                categoryDialogPath = "",
+            )
+        }
     }
 
     fun startEditCategory(idx: Int) {
         _state.update {
-            if (idx in it.categories.indices) it.copy(categoryDialogFor = idx, categoryDialogError = null) else it
+            if (idx in it.categories.indices) {
+                it.copy(
+                    categoryDialogFor = idx,
+                    categoryDialogError = null,
+                    categoryDialogName = it.categories[idx].name,
+                    categoryDialogPath = it.categories[idx].path,
+                )
+            } else {
+                it
+            }
         }
     }
 
     fun dismissCategoryDialog() {
-        _state.update { it.copy(categoryDialogFor = null, categoryDialogError = null) }
+        _state.update {
+            it.copy(
+                categoryDialogFor = null,
+                categoryDialogError = null,
+                categoryDialogName = null,
+                categoryDialogPath = null,
+            )
+        }
+    }
+
+    /** Live field edits (v1.0.2): the dialog fields bind to the state. */
+    fun updateCategoryDialogName(name: String) {
+        _state.update { it.copy(categoryDialogName = name) }
+    }
+
+    fun updateCategoryDialogPath(path: String) {
+        _state.update { it.copy(categoryDialogPath = path) }
     }
 
     fun submitCategoryDialog(name: String, path: String) {
@@ -709,6 +834,8 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
                 categories = newCats,
                 categoryDialogFor = null,
                 categoryDialogError = null,
+                categoryDialogName = null,
+                categoryDialogPath = null,
                 status = statusOf(if (idx == ADD_CATEGORY) R.string.msg_category_added else R.string.msg_category_edited),
             )
         }
@@ -766,24 +893,30 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Open the full-screen preview dialog. Video/audio auto-play immediately
-     * like the desktop preview panel (show_preview L3449-3464), so the
-     * status line reports the embedded player just like the desktop does
-     * (L3232 / L3324).
+     * like the desktop preview panel (show_preview L3449-3464).
+     *
+     * v1.0.2: one tap on a grid tile opens the preview (the old flow needed
+     * a double-tap, which made Compose delay EVERY single tap ~300 ms and
+     * felt like "files need several clicks"). The previewed file IS the
+     * active selection — desktop parity, where a list click previews AND
+     * selects — so category taps / digit shortcuts move exactly this file.
+     * The "playing" status is only set for media that actually plays; the
+     * old code stamped "Playing (embedded player)" on every PDF and image.
      */
     fun openPreview(path: String) {
         val f = File(path)
         if (!f.isFile) return
         val ext = Paths.splitName(f.name).second.drop(1).lowercase()
+        val group = groupForExtension(ext)
         _state.update {
             it.copy(
                 previewPath = path,
-                status = statusOf(
-                    if (ext in AUDIO_EXTS) {
-                        R.string.msg_playing_audio_embedded
-                    } else {
-                        R.string.msg_playing_embedded
-                    },
-                ),
+                selection = setOf(path),
+                status = when (group) {
+                    MediaGroup.AUDIO -> statusOf(R.string.msg_playing_audio_embedded)
+                    MediaGroup.VIDEO -> statusOf(R.string.msg_playing_embedded)
+                    else -> it.status
+                },
             )
         }
     }
@@ -813,14 +946,11 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- selection ----------------
 
+    /** Only used in selection mode (multi-select toggling); a plain tap opens the preview. */
     fun onTileTap(path: String) {
         _state.update {
-            if (it.selectionMode) {
-                val sel = if (path in it.selection) it.selection - path else it.selection + path
-                it.copy(selection = sel)
-            } else {
-                it.copy(selection = setOf(path))
-            }
+            val sel = if (path in it.selection) it.selection - path else it.selection + path
+            it.copy(selection = sel)
         }
     }
 
@@ -939,12 +1069,13 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             }
             is TransferEvent.Finished -> onTransferFinished(e.src, e.newPath)
             is TransferEvent.Error -> onTransferError(e.src, e.message)
-            is TransferEvent.QueueUpdated -> onQueueUpdated(e.queued, e.active)
         }
     }
 
     private fun onTransferFinished(src: String, newPath: String) {
-        undo.record(src, newPath)
+        // record() returns false for a duplicate pair (backlog drain vs
+        // live event, v1.0.2) — counters and list updates run exactly once.
+        if (!undo.record(src, newPath)) return
         val oldName = File(src).name
         val newName = File(newPath).name
         _state.update {
@@ -962,6 +1093,11 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
                 },
             )
         }
+        // v1.0.2: tell MediaStore/launcher gallery about BOTH folders so the
+        // moved file shows up in the destination and disappears from the
+        // source immediately (the engine moves raw files, so the media index
+        // otherwise holds stale entries for a while).
+        scanMedia(listOf(src, newPath))
     }
 
     private fun onTransferError(src: String, errmsg: String) {
@@ -976,12 +1112,12 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun onQueueUpdated(queued: Int, active: Int) {
-        _state.update { it.copy(queued = queued, active = active, busy = active > 0 || queued > 0) }
-        if (queued == 0 && active == 0) {
-            // Queue drained — seal the open undo batch only when every
-            // expected file reported back (desktop L3737-3745).
-            if (undo.sealIfQueueIdle()) refreshUndoState()
+    /** Best-effort MediaStore refresh (v1.0.2); never fatal. */
+    private fun scanMedia(paths: List<String>) {
+        if (paths.isEmpty()) return
+        try {
+            MediaScannerConnection.scanFile(getApplication(), paths.toTypedArray(), null, null)
+        } catch (_: Exception) {
         }
     }
 
@@ -1094,6 +1230,9 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             g > 0 -> statusOf(R.string.msg_nothing_no_longer_in_category)
             else -> null
         }
+        // v1.0.2: refresh the media index for every touched folder (files
+        // reappeared in the source, vanished from the categories).
+        scanMedia((restored + failed + gone).flatMap { listOf(it.first, it.second) })
         refreshUndoState()
         // Rescan so the restored files reappear; the summary is shown when
         // the rescan finishes (desktop _status_after_rescan).
