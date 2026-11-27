@@ -15,8 +15,8 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.1"
+        versionCode = 11
+        versionName = "1.0.2"
     }
 
     // Phase 5 release signing: the release-apk.yml workflow exposes the
@@ -74,6 +74,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // v1.0.2: animated GIF decoding (desktop QMovie parity) — coil-compose
+    // alone decodes only the FIRST frame of a GIF; coil-gif brings the
+    // animated decoders registered in SortViewApp (ImageDecoder on API 28+,
+    // GifDecoder on API 26-27).
+    implementation("io.coil-kt:coil-gif:2.7.0")
+
     implementation("androidx.core:core-ktx:1.15.0")
 
     // Phase 5 splash screen (Theme.SplashScreen backport; the Starting
@@ -87,6 +94,12 @@ dependencies {
     // exactly like the portable desktop build without unrar (main.py L1094);
     // junrar remains an optional later upgrade (ROADMAP mapping table).
     implementation("org.apache.commons:commons-compress:1.27.1")
+
+    // v1.0.2: LZMA/XZ codec for 7z thumbnails — commons-compress needs the
+    // tukaani codec for the LZMA/LZMA2 streams that virtually every .7z
+    // archive uses; without it SevenZFile throws on the audio/video streams
+    // and 7z archives stay on the type card (py7zr parity).
+    implementation("org.tukaani:xz:1.10")
 
     // Phase 3 preview: Media3/ExoPlayer replaces the desktop's Qt Multimedia
     // + libVLC + ffplay stack (ROADMAP mapping table). Video loops forever

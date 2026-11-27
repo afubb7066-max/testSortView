@@ -71,6 +71,12 @@
     <string name="crash_copy">Copy report</string>
     <string name="crash_clear">Clear</string>
 
+    <!-- v1.0.2: category-dialog Browse button (opens the folder picker in
+         CATEGORY mode; the chosen path is written back into the dialog)
+         + audio playback error (AudioPane decoder failures). -->
+    <string name="btn_browse">Browse</string>
+    <string name="err_audio_playback_failed">Audio playback failed</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">Selected: {n}</string>
     <string name="sel_select_all">Select all</string>

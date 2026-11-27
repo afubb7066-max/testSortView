@@ -71,6 +71,12 @@
     <string name="crash_copy">کپی گزارش</string>
     <string name="crash_clear">پاک کردن</string>
 
+    <!-- v1.0.2: دکمه مرور دیالوگ دسته (باز کردن انتخاب‌گر پوشه در حالت
+         CATEGORY؛ مسیر انتخابی داخل همان دیالوگ باز برمی‌گردد)
+         + پیام خطای پخش صدا (خرابی دیکد در AudioPane) -->
+    <string name="btn_browse">مرور</string>
+    <string name="err_audio_playback_failed">پخش صدا ناموفق بود</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">انتخاب‌شده: {n}</string>
     <string name="sel_select_all">انتخاب همه</string>
