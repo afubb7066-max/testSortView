@@ -139,7 +139,8 @@ object TransferHub {
     /** Authoritative idle state for the foreground service stop decision. */
     fun isIdle(): Boolean = engineRef?.isIdle() ?: true
 
-    private companion object {
-        const val BACKLOG_CAP = 1024
-    }
+    // A standalone object must not nest a companion object — this was the
+    // CI compile failure since f47eaa6 ("Modifier 'companion' is not
+    // applicable inside 'standalone object'"). Plain const at object scope.
+    private const val BACKLOG_CAP = 1024
 }
