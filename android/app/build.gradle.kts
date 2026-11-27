@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,10 +15,25 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "1.0.0"
     }
 
+    // Phase 5 release signing: the release-apk.yml workflow exposes the
+    // four GitHub Secrets as environment variables; when they are absent
+    // (a plain local build) the release APK is simply built unsigned so
+    // assembleRelease keeps succeeding everywhere.
+    signingConfigs {
+        create("release") {
+            val ksPath = System.getenv("SORTVIEW_KEYSTORE_FILE")
+            if (ksPath != null) {
+                storeFile = File(ksPath)
+                storePassword = System.getenv("SORTVIEW_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SORTVIEW_KEY_ALIAS")
+                keyPassword = System.getenv("SORTVIEW_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,6 +41,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (System.getenv("SORTVIEW_KEYSTORE_FILE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

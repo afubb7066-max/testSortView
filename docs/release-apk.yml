@@ -1,0 +1,86 @@
+name: Release APK
+
+# Publishes a signed release APK. Primary path: push a tag "v*" (e.g.
+# v1.0.0) — the job tests, builds assembleRelease, verifies the signature
+# and publishes a GitHub Release with SortView-<tag>-release.apk.
+# workflow_dispatch without a tag still builds and uploads the APK as an
+# Actions artifact (no Release is created).
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Signed release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Decode keystore from secrets
+        id: keystore
+        env:
+          SORTVIEW_KEYSTORE_B64: ${{ secrets.SORTVIEW_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$SORTVIEW_KEYSTORE_B64" ]; then
+            echo "$SORTVIEW_KEYSTORE_B64" | base64 -d > /tmp/sortview-release.keystore
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SORTVIEW_KEYSTORE_B64 is not set — building an UNSIGNED APK (artifact only)."
+          fi
+
+      - name: JVM unit tests
+        run: gradle -p android --no-daemon testDebugUnitTest
+
+      - name: Build release APK
+        env:
+          SORTVIEW_KEYSTORE_FILE: ${{ steps.keystore.outputs.present == 'true' && '/tmp/sortview-release.keystore' || '' }}
+          SORTVIEW_KEYSTORE_PASSWORD: ${{ secrets.SORTVIEW_KEYSTORE_PASSWORD }}
+          SORTVIEW_KEY_ALIAS: ${{ secrets.SORTVIEW_KEY_ALIAS }}
+          SORTVIEW_KEY_PASSWORD: ${{ secrets.SORTVIEW_KEY_PASSWORD }}
+        run: gradle -p android --no-daemon assembleRelease
+
+      - name: Verify signature
+        if: steps.keystore.outputs.present == 'true'
+        run: |
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs \
+            android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Stage APK with ref name
+        run: |
+          cp android/app/build/outputs/apk/release/app-release*.apk \
+            "SortView-${GITHUB_REF_NAME}-release.apk"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SortView-release-apk
+          path: SortView-*-release.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SortView-*-release.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

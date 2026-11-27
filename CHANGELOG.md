@@ -2,6 +2,19 @@
 
 نسخه‌گذاری این پورت از دسکتاپ مستقل است (قرارداد بند ۹ ROADMAP).
 
+## 1.0.0 — 2026-11-27
+
+فاز ۵ — انتشار (نسخهٔ نهایی پاریت کامل):
+
+- versionCode 9 / versionName 1.0.0 — همان محتوای ۰.۶.۰ به‌علاوهٔ زیرساخت انتشار:
+- **امضای release در `build.gradle.kts`:** signingConfig «release» از متغیرهای محیطی `SORTVIEW_KEYSTORE_FILE` / `SORTVIEW_KEYSTORE_PASSWORD` / `SORTVIEW_KEY_ALIAS` / `SORTVIEW_KEY_PASSWORD` پر می‌شود؛ بدون آن‌ها `assembleRelease` مثل قبل بیلد می‌کند (APK بدون امضا) — ورک‌فلو CI چهار متغیر را از GitHub Secrets می‌ریزد.
+- **ورک‌فلو `release-apk.yml`:** روی push تگ `v*` و اجرای دستی — `testDebugUnitTest` + `assembleRelease` امضاشده + انتشار خودکار در GitHub Releases با APK نام‌گذاری‌شده `SortView-<tag>-release.apk`؛ محتوای کامل آن در `docs/release-apk.yml` آماده است و افزودنش به `.github/workflows/` (به‌دلیل محدودیه مجوز API) با ویرایش وب انجام می‌شود.
+- **README دوزبانه (fa/en):** معرفی، جدول وضعیت نسخه‌ها تا ۱.۰.۰، دانلود APK (artifact دیباگ / Releases امضاشده) و راهنمای ساخت keystore و Secrets و push تگ.
+- ROADMAP به v1.2: فاز ۵ پیاده‌سازی‌شده؛ تنها قدم باقی‌مانده push تگ `v1.0.0` پس از ست‌کردن Secrets (بخش کاربر) است.
+- مجموع تست‌های JVM: ۲۵ سبز (۹ PathsTest + ۱۶ FiltersTest).
+
+نکته: مثل فازهای قبل، «کد کامل و CI سبز» یعنی آمادهٔ انتشار؛ تأیید نهایی کیفیت با نصب APK تگ `v1.0.0` روی دستگاه واقعی انجام می‌شود.
+
 ## 0.6.0 — 2026-11-27
 
 فاز ۵ — پالایش و آماده‌سازی انتشار:
@@ -104,4 +117,4 @@
 
 ## آینده
 
-- 1.0.0 — فاز ۵: پالایش و انتشار عمومی
+- انتشار واقعی: push تگ `v1.0.0` پس از ست‌کردن Secrets → ورک‌فلو Release → نصب و تأیید روی دستگاه واقعی
