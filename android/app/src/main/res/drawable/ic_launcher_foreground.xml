@@ -1,16 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Simple "sorting bars" glyph, kept inside the adaptive-icon safe zone. -->
+    <!-- Final SortView icon (Phase 5): a 2x2 gallery grid with the last
+         slot drawn as a diagonal arrow — "every file lands in its
+         category". All shapes stay inside the adaptive-icon safe zone
+         (the 66dp circle centred at 54,54). The same drawable serves as
+         the themed (monochrome) icon layer on Android 13+. -->
+    <!-- top-left tile -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M34,38h40v8h-40z" />
+        android:pathData="M34,39 a5,5 0 0 1 5,-5 h8 a5,5 0 0 1 5,5 v8 a5,5 0 0 1 -5,5 h-8 a5,5 0 0 1 -5,-5 z" />
+    <!-- top-right tile -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M34,50h32v8h-32z" />
+        android:pathData="M56,39 a5,5 0 0 1 5,-5 h8 a5,5 0 0 1 5,5 v8 a5,5 0 0 1 -5,5 h-8 a5,5 0 0 1 -5,-5 z" />
+    <!-- bottom-left tile -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M34,62h24v8h-24z" />
+        android:pathData="M34,61 a5,5 0 0 1 5,-5 h8 a5,5 0 0 1 5,5 v8 a5,5 0 0 1 -5,5 h-8 a5,5 0 0 1 -5,-5 z" />
+    <!-- bottom-right slot: file moving into place (arrow down-right) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M52,50 l-4,4 13,13 4,-4 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,70 L70,58 L58,70 Z" />
 </vector>

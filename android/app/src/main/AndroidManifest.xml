@@ -30,10 +30,12 @@
         android:label="@string/app_name"
         android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <!-- Framework theme on purpose: no com.google.android.material
-             dependency (that library owns the Theme.Material3 XML styles); the
-             real UI is drawn entirely by Compose MaterialTheme inside MainActivity. -->
+        android:theme="@style/Theme.SortView.Starting">
+        <!-- Theme.SortView.Starting shows the Phase 5 splash, then hands over
+             to Theme.SortView (framework theme, see values/themes.xml): no
+             com.google.android.material dependency (that library owns the
+             Theme.Material3 XML styles); the real UI is drawn entirely by
+             Compose MaterialTheme inside MainActivity. -->
         <!-- requestLegacyExternalStorage: on Android 10 devices the classic
              READ/WRITE pair then gives File-based access to shared storage,
              matching the desktop's plain-filesystem behavior. -->

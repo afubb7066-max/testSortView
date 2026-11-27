@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The post-splash app theme: the same framework Material theme the
+         manifest used before Phase 5 (no com.google.android.material
+         dependency — that library owns the Theme.Material3 XML styles;
+         the real UI is drawn by Compose MaterialTheme inside MainActivity). -->
+    <style name="Theme.SortView" parent="@android:style/Theme.Material.Light.NoActionBar" />
+
+    <!-- Phase 5 splash: the androidx core-splashscreen backport
+         (Theme.SplashScreen) shows the launcher icon on the brand blue
+         through API 26+, then hands over to Theme.SortView. -->
+    <style name="Theme.SortView.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenAnimationDuration">300</item>
+        <item name="postSplashScreenTheme">@style/Theme.SortView</item>
+    </style>
+</resources>

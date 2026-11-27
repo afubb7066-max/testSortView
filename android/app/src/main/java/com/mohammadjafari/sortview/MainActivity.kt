@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -71,6 +72,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Phase 5 splash (core-splashscreen): must be installed before
+        // super.onCreate — Theme.SortView.Starting hands over to
+        // Theme.SortView right after (res/values/themes.xml).
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         setContent {
             // Phase 4: the palette comes from config.json ("theme", desktop

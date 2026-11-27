@@ -1,3 +1,6 @@
 <resources>
-    <color name="ic_launcher_background">#3B6EF5</color>
+    <!-- Brand blue = the exact desktop dark/light accent (main.py THEMES,
+         accent #3D5AF1). Shared by the launcher icon background and the
+         splash screen background. -->
+    <color name="ic_launcher_background">#3D5AF1</color>
 </resources>
