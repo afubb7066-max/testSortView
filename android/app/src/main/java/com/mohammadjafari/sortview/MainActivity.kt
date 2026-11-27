@@ -26,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +97,23 @@ fun hasStorageAccess(context: Context): Boolean =
 fun RootApp(vm: SortViewModel = viewModel()) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasStorageAccess(context)) }
+
+    // Android 13+: the transfer progress notification needs POST_NOTIFICATIONS
+    // (declared in AndroidManifest.xml). Ask once as soon as file access is
+    // granted — a denial is non-fatal: transfers keep running in the
+    // foreground service, only the visible progress notification with its
+    // Stop button is hidden (review follow-up, 0.4.2).
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(granted) {
+        if (granted &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // Re-check when the user returns from the all-files-access settings page.
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
