@@ -127,4 +127,53 @@
     <string name="notif_active_only">Moving {active} file(s)</string>
     <string name="notif_queued_only">{queued} file(s) queued</string>
     <string name="notif_cancel">Stop</string>
+
+    <!-- Phase 4: filter / sort / thumb size (desktop header rows, app_i18n.py keys) -->
+    <string name="filter_hint">Filter: .jpg,.png,.mp4 or empty</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_type">Type</string>
+    <string name="lbl_thumb">Thumb:</string>
+
+    <!-- Phase 4: six themes (desktop THEMES labels, app_i18n.py keys) -->
+    <string name="lbl_theme">Theme:</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_paper">Paper</string>
+    <string name="theme_graphite">Graphite</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_forest">Forest</string>
+    <string name="theme_amoled">AMOLED</string>
+
+    <!-- Phase 4: category sets (desktop tools, app_i18n.py keys) -->
+    <string name="tools_menu">More options</string>
+    <string name="set_save">Save set</string>
+    <string name="set_load">Load set</string>
+    <string name="set_export">Export</string>
+    <string name="set_import">Import</string>
+    <string name="set_save_title">Save category set</string>
+    <string name="set_name_label">Set name:</string>
+    <string name="set_choose">Choose set:</string>
+    <string name="set_replace_or_merge">Replace existing categories or merge?</string>
+    <string name="set_replace">Replace</string>
+    <string name="set_merge">Merge</string>
+    <string name="msg_set_saved">Category set saved: {name}</string>
+    <string name="err_set_save">Failed to save set: {e}</string>
+    <string name="err_no_sets">No saved category sets found.</string>
+    <string name="err_set_no_valid">No valid categories in this set.</string>
+    <string name="err_set_no_valid_file">No valid categories in this file.</string>
+    <string name="msg_set_loaded">Category set loaded.</string>
+    <string name="err_set_load">Failed to load set: {e}</string>
+    <string name="msg_exported_to">Exported to: {path}</string>
+    <string name="err_set_export">Failed to export set: {e}</string>
+    <string name="msg_imported_n">Imported {n} categories.</string>
+    <string name="err_set_import">Failed to import: {e}</string>
+
+    <!-- Phase 4: thumbnail cache + about (cache texts: app_i18n.py keys) -->
+    <string name="thumbs_clear">Clear thumbnails</string>
+    <string name="thumbs_confirm_body">Clear the thumbnail cache? Thumbnails will be regenerated in the background afterwards.</string>
+    <string name="thumbs_confirm_clear">Clear</string>
+    <string name="msg_thumb_cleared">Thumbnail cache cleared: {n} files, {mb} MB</string>
+    <string name="err_thumb_clear">Cannot clear thumbnail cache: {e}</string>
+    <string name="about_title">About SortView</string>
+    <string name="about_version">Version: {v}</string>
+    <string name="about_body">Android port of SortView — the desktop file sorting gallery (Python/PyQt6, v1.10.3).\n© Mohammad Jafari — GPL-3.0-or-later.</string>
 </resources>

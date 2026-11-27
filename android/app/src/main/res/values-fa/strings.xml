@@ -127,4 +127,53 @@
     <string name="notif_active_only">در حال انتقال {active} فایل</string>
     <string name="notif_queued_only">{queued} فایل در صف</string>
     <string name="notif_cancel">توقف</string>
+
+    <!-- فاز ۴: فیلتر / مرتب‌سازی / اندازه تامبنیل (ردیف‌های هدر دسکتاپ، کلیدهای app_i18n.py) -->
+    <string name="filter_hint">فیلتر: .jpg,.png,.mp4 یا خالی</string>
+    <string name="sort_name">نام</string>
+    <string name="sort_type">نوع</string>
+    <string name="lbl_thumb">تامبنیل:</string>
+
+    <!-- فاز ۴: شش تم (برچسب‌های THEMES دسکتاپ، کلیدهای app_i18n.py) -->
+    <string name="lbl_theme">تم:</string>
+    <string name="theme_light">روشن</string>
+    <string name="theme_paper">کاغذی</string>
+    <string name="theme_graphite">گرافیتی</string>
+    <string name="theme_dark">تیره</string>
+    <string name="theme_forest">جنگلی</string>
+    <string name="theme_amoled">مشکی خالص</string>
+
+    <!-- فاز ۴: مجموعه‌های دسته (ابزارهای دسکتاپ، کلیدهای app_i18n.py) -->
+    <string name="tools_menu">گزینه‌های بیشتر</string>
+    <string name="set_save">ذخیره مجموعه</string>
+    <string name="set_load">بارگذاری مجموعه</string>
+    <string name="set_export">برون‌بری</string>
+    <string name="set_import">درون‌ریزی</string>
+    <string name="set_save_title">ذخیره مجموعه دسته‌ها</string>
+    <string name="set_name_label">نام مجموعه:</string>
+    <string name="set_choose">انتخاب مجموعه:</string>
+    <string name="set_replace_or_merge">دسته‌های فعلی جایگزین شوند یا ادغام شوند؟</string>
+    <string name="set_replace">جایگزینی</string>
+    <string name="set_merge">ادغام</string>
+    <string name="msg_set_saved">مجموعه دسته‌ها ذخیره شد: {name}</string>
+    <string name="err_set_save">ذخیره مجموعه ناموفق بود: {e}</string>
+    <string name="err_no_sets">هیچ مجموعه دسته‌ای ذخیره نشده است.</string>
+    <string name="err_set_no_valid">دسته معتبری در این مجموعه نیست.</string>
+    <string name="err_set_no_valid_file">دسته معتبری در این فایل نیست.</string>
+    <string name="msg_set_loaded">مجموعه دسته‌ها بارگذاری شد.</string>
+    <string name="err_set_load">بارگذاری مجموعه ناموفق بود: {e}</string>
+    <string name="msg_exported_to">برون‌بری شد به: {path}</string>
+    <string name="err_set_export">برون‌بری مجموعه ناموفق بود: {e}</string>
+    <string name="msg_imported_n">{n} دسته درون‌ریزی شد.</string>
+    <string name="err_set_import">درون‌ریزی ناموفق بود: {e}</string>
+
+    <!-- فاز ۴: کش تامبنیل + درباره (متن‌های کش: کلیدهای app_i18n.py) -->
+    <string name="thumbs_clear">پاک‌سازی تامبنیل‌ها</string>
+    <string name="thumbs_confirm_body">کش تامبنیل‌ها پاک شود؟ بعد از پاک کردن، تامبنیل‌ها دوباره در پس‌زمینه ساخته می‌شوند.</string>
+    <string name="thumbs_confirm_clear">پاک کردن</string>
+    <string name="msg_thumb_cleared">کش تامبنیل پاک شد: {n} فایل، {mb} مگابایت</string>
+    <string name="err_thumb_clear">پاک‌سازی کش تامبنیل ممکن نیست: {e}</string>
+    <string name="about_title">درباره سورت‌ویو</string>
+    <string name="about_version">نسخه: {v}</string>
+    <string name="about_body">پورت اندروید سورت‌ویو — گالری مرتب‌سازی فایل نسخه دسکتاپ (Python/PyQt6، نسخه 1.10.3).\n© محمد جعفری — GPL-3.0-or-later.</string>
 </resources>
