@@ -11,8 +11,8 @@ import com.mohammadjafari.sortview.data.SortConfig
 import com.mohammadjafari.sortview.data.UndoCoordinator
 import com.mohammadjafari.sortview.data.normalizeCategories
 import com.mohammadjafari.sortview.fs.Paths
-import com.mohammadjafari.sortview.fs.TransferEngine
 import com.mohammadjafari.sortview.fs.TransferEvent
+import com.mohammadjafari.sortview.fs.TransferHub
 import com.mohammadjafari.sortview.media.AUDIO_EXTS
 import com.mohammadjafari.sortview.media.MediaGroup
 import com.mohammadjafari.sortview.media.ThumbnailEngine
@@ -20,6 +20,7 @@ import com.mohammadjafari.sortview.media.groupForExtension
 import com.mohammadjafari.sortview.scan.FolderScanner
 import com.mohammadjafari.sortview.scan.ScanError
 import com.mohammadjafari.sortview.scan.ScanException
+import com.mohammadjafari.sortview.transfer.TransferService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,7 +98,12 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     private var rawConfig: kotlinx.serialization.json.JsonObject = store.load()
     private var cfg: SortConfig = store.parse(rawConfig)
 
-    private val engine = TransferEngine(viewModelScope, app)
+    // App-lifetime engine owned by TransferHub: its 2 workers and their
+    // queue live in the process, not in this ViewModel, so a move survives
+    // the UI being closed or backgrounded (TransferService keeps the
+    // process alive). Pairs finished while no UI listened are drained in
+    // the init block below.
+    private val engine = TransferHub.engine(app)
     private val undo = UndoCoordinator()
     private val thumbs = ThumbnailEngine(app)
 
@@ -112,8 +118,20 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            engine.events.collect { onEngineEvent(it) }
+            engine.events.collect { ev ->
+                // Retire pairs a live collector sees so the hub backlog
+                // cannot double-record them (TransferHub.acknowledge).
+                if (ev is TransferEvent.Finished) {
+                    TransferHub.acknowledge(ev.src, ev.newPath)
+                }
+                onEngineEvent(ev)
+            }
         }
+        // Moves finished while the UI was gone (the service kept the
+        // process alive) re-enter the undo bookkeeping here; drops
+        // counted by the notification Stop action reduce the expected
+        // count exactly like a UI-side cancel.
+        reconcileOrphanedTransfers()
         // Desktop __init__: restore the saved folder under the same guards
         // (L1963-1978), save the config once (L2062), rescan (L2063).
         val (folder, userSelected) = applySavedFolderRules()
@@ -132,6 +150,24 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             _state.update { it.copy(status = statusOf(R.string.msg_please_select_folder)) }
         }
+    }
+
+    /**
+     * Finished (src, dst) pairs the hub buffered while no ViewModel was
+     * subscribed, plus drops counted by the notification Stop action.
+     * The pairs become one sealed undo round so the moves stay undoable
+     * (TransferHub KDoc); drops reduce the expected count like the
+     * desktop cancel path (main.py L3753).
+     */
+    private fun reconcileOrphanedTransfers() {
+        val orphans = TransferHub.drainCompleted()
+        val dropped = TransferHub.takeDropped()
+        if (orphans.isEmpty() && dropped == 0) return
+        undo.openBatchIfClosed()
+        undo.expect(orphans.size)
+        for ((src, dst) in orphans) onTransferFinished(src, dst)
+        if (dropped > 0) undo.adjustDropped(dropped)
+        if (undo.sealIfQueueIdle()) refreshUndoState()
     }
 
     private fun applySavedFolderRules(): Pair<String, Boolean> {
@@ -562,6 +598,11 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun doEnqueue(srcList: List<String>, dst: String) {
+        // Start (or re-attach) the transfer foreground service BEFORE the
+        // queue fills: it must be started while the app is foregrounded
+        // (Android background-start restriction) and it shows the live
+        // progress notification with the Stop action while the queue runs.
+        if (srcList.isNotEmpty()) TransferService.start(getApplication())
         var queued = 0
         var skipped = 0
         val dstF = File(dst)
@@ -649,7 +690,7 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelTransfers() {
-        val dropped = engine.cancelAll()
+        val dropped = engine.cancelAll() + TransferHub.takeDropped()
         // Dropped files never started and will never report back.
         undo.adjustDropped(dropped)
         // cancel_all() emitted queue_updated(0, 0) before the expected count
