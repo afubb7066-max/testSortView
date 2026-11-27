@@ -1,6 +1,7 @@
 package com.mohammadjafari.sortview.ui
 
 import android.os.Environment
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -66,6 +68,12 @@ import kotlinx.coroutines.withContext
  * level up), and a silent empty list is replaced by clear states: how many
  * subfolders the current folder has, "no subfolders here — tap Select",
  * or "cannot read this folder".
+ *
+ * v1.0.2: the picker also serves the category dialog (PickerTarget.CATEGORY)
+ * — the recursive checkbox is hidden there (it only applies to the browse
+ * folder) and the selection lands back in the open dialog. The hardware
+ * back button closes the picker instead of leaving the app, and the screen
+ * respects the system bars on Android 15 (enforced edge-to-edge).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -76,6 +84,11 @@ fun FolderPickerScreen(vm: SortViewModel) {
     var recursive by remember { mutableStateOf(st.includeSubfolders) }
     var subdirs by remember { mutableStateOf<List<File>>(emptyList()) }
     var readable by remember { mutableStateOf(true) }
+
+    // Hardware back closes the picker instead of leaving the app (v1.0.2).
+    BackHandler { vm.dismissFolderPicker() }
+
+    val forCategory = st.pickerTarget == PickerTarget.CATEGORY
 
     LaunchedEffect(pathText) {
         val result = withContext(Dispatchers.IO) {
@@ -98,7 +111,13 @@ fun FolderPickerScreen(vm: SortViewModel) {
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // Android 15 edge-to-edge: keep clear of the system bars.
+                .safeDrawingPadding()
+                .padding(12.dp),
+        ) {
             // Title row: close, title, confirm
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { vm.dismissFolderPicker() }) {
@@ -229,25 +248,29 @@ fun FolderPickerScreen(vm: SortViewModel) {
                 }
             }
 
-            // The recursive option gets its own highlighted card (desktop L3937-3949).
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Column(modifier = Modifier.padding(14.dp, 12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = recursive, onCheckedChange = { recursive = it })
+            // The recursive option only applies to the browse-folder target
+            // (a category destination never scans recursively) — hidden in
+            // CATEGORY mode (v1.0.2). Desktop L3937-3949.
+            if (!forCategory) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Column(modifier = Modifier.padding(14.dp, 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = recursive, onCheckedChange = { recursive = it })
+                            Text(
+                                text = stringResource(R.string.chk_recursive),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                         Text(
-                            text = stringResource(R.string.chk_recursive),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.chk_recursive_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(
-                        text = stringResource(R.string.chk_recursive_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
 

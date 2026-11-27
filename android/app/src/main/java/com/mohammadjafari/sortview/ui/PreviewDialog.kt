@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
@@ -74,9 +77,11 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -116,6 +121,12 @@ private const val PDF_PAGE_PX = 1440
  *  - closing the dialog releases the player and its file handle
  *    immediately (desktop _reset_preview); the view model additionally
  *    waits 200 ms before moving a file that was just previewed.
+ *
+ * v1.0.2 rework: Stop keeps the controls visible and Play restarts (the
+ * old code removed the whole control bar after Stop, bricking replay);
+ * audio decode errors surface as a message; the MPEG-TS content sniff and
+ * the PdfRenderer/descriptor opening run on Dispatchers.IO instead of the
+ * main thread; a failed PdfRenderer open closes its descriptor (leak).
  */
 @Composable
 fun PreviewDialog(
@@ -128,7 +139,14 @@ fun PreviewDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            // safeDrawing keeps the top/bottom bars clear of the status and
+            // navigation bars on Android 15 (enforced edge-to-edge); a no-op
+            // on older devices where the window already fits the bars.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
+            ) {
                 // --- top bar: file name + close (mobile stand-in for the panel title) ---
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     Row(
@@ -151,10 +169,20 @@ fun PreviewDialog(
 
                 // --- content pane ---
                 val ext = file.ext.lowercase()
+                // MPEG-TS content sniffing reads the file header — resolve
+                // it OFF the main thread (v1.0.2); the type card flashes
+                // briefly while the check runs (a ~189-byte read).
+                val videoResolved by produceState<Boolean?>(null, file.path) {
+                    value = withContext(Dispatchers.IO) { playsAsVideo(File(file.path), file.ext) }
+                }
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when {
-                        playsAsVideo(File(file.path), file.ext) ->
+                        videoResolved == true ->
                             VideoPane(vm, file)
+                        videoResolved == null ->
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                TypeCard(file, Modifier.fillMaxWidth(0.7f).height(240.dp))
+                            }
                         ext in AUDIO_EXTS ->
                             AudioPane(vm, file)
                         file.group == com.mohammadjafari.sortview.media.MediaGroup.IMAGE || ext in ANIM_EXTS ->
@@ -228,10 +256,23 @@ private fun VideoPane(vm: SortViewModel, file: SortFile) {
     // Stop → hide the video surface and show the static card, exactly like
     // the desktop Stop button (L3584-3590); Play restarts from the beginning.
     var stopped by remember { mutableStateOf(false) }
+    val showCard = stopped || failed
 
-    if (stopped || failed) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            TypeCard(file, Modifier.fillMaxWidth(0.7f).height(240.dp))
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            if (showCard) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    TypeCard(file, Modifier.fillMaxWidth(0.7f).height(240.dp))
+                }
+            } else {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply { useController = false }
+                    },
+                    update = { it.player = player },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (failed) {
                 Text(
                     text = stringResource(R.string.err_video_playback_failed),
@@ -241,33 +282,27 @@ private fun VideoPane(vm: SortViewModel, file: SortFile) {
                 )
             }
         }
-    } else {
-        // Column so the controls sit BELOW the video surface (a Box would
-        // overlay them on the picture's top-left corner).
-        Column(modifier = Modifier.fillMaxSize()) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply { useController = false }
-                },
-                update = { it.player = player },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            PlaybackControls(
-                player = player,
-                onRestart = {
-                    player.setMediaItem(item)
-                    player.prepare()
-                    player.play()
-                },
-                onStop = {
-                    // stop() is asynchronous (desktop comment L1808-1810): clear
-                    // the media too so the file handle drops immediately.
-                    player.stop()
-                    player.clearMediaItems()
-                    stopped = true
-                },
-            )
-        }
+        // v1.0.2: the controls NEVER disappear — after Stop the bar stays
+        // and Play restarts the clip (the old code removed the whole bar,
+        // so a stopped video could never play again).
+        PlaybackControls(
+            player = player,
+            stopped = showCard,
+            onRestart = {
+                failed = false
+                stopped = false
+                player.setMediaItem(item)
+                player.prepare()
+                player.play()
+            },
+            onStop = {
+                // stop() is asynchronous (desktop comment L1808-1810): clear
+                // the media too so the file handle drops immediately.
+                player.stop()
+                player.clearMediaItems()
+                stopped = true
+            },
+        )
     }
 }
 
@@ -296,6 +331,19 @@ private fun AudioPane(vm: SortViewModel, file: SortFile) {
         onDispose { player.release() }
     }
 
+    // v1.0.2: codec errors (e.g. .wma on many devices) were silently
+    // dropped — surface them like the video pane does.
+    var failed by remember { mutableStateOf(false) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                failed = true
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
     var stopped by remember { mutableStateOf(false) }
 
     // No video surface — the gradient type card stays on screen while the
@@ -303,35 +351,44 @@ private fun AudioPane(vm: SortViewModel, file: SortFile) {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             TypeCard(file, Modifier.fillMaxWidth(0.7f).height(240.dp))
+            if (failed) {
+                Text(
+                    text = stringResource(R.string.err_audio_playback_failed),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                )
+            }
         }
-        if (!stopped) {
-            PlaybackControls(
-                player = player,
-                onRestart = {
-                    player.setMediaItem(item)
-                    player.prepare()
-                    player.play()
-                },
-                onStop = {
-                    player.stop()
-                    player.clearMediaItems()
-                    stopped = true
-                },
-            )
-        }
+        PlaybackControls(
+            player = player,
+            stopped = stopped,
+            onRestart = {
+                failed = false
+                stopped = false
+                player.setMediaItem(item)
+                player.prepare()
+                player.play()
+            },
+            onStop = {
+                player.stop()
+                player.clearMediaItems()
+                stopped = true
+            },
+        )
     }
 }
 
 /**
- * Play/Pause + Stop + a position slider. The Play/Pause label is synced
- * with the real engine state every 400 ms — the desktop's
- * playback_sync_timer (main.py L2437-2441) that fixed the classic
- * "pause actually replays" confusion. The slider is a documented mobile
- * adaptation (the desktop preview has no seek control).
+ * Play/Pause (or Play = restart after Stop) + Stop + a position slider.
+ * The Play/Pause label is synced with the real engine state every 400 ms —
+ * the desktop's playback_sync_timer (main.py L2437-2441). The slider is a
+ * documented mobile adaptation (the desktop preview has no seek control).
  */
 @Composable
 private fun PlaybackControls(
     player: Player,
+    stopped: Boolean,
     onRestart: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -379,10 +436,16 @@ private fun PlaybackControls(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Desktop label rules: playing -> "Pause", else "Play";
                 // after Stop a press restarts the clip from the beginning.
-                TextButton(onClick = {
-                    if (playing) player.pause() else player.play()
-                }) {
-                    Text(stringResource(if (playing) R.string.btn_pause else R.string.btn_play))
+                if (stopped) {
+                    TextButton(onClick = onRestart) {
+                        Text(stringResource(R.string.btn_play))
+                    }
+                } else {
+                    TextButton(onClick = {
+                        if (playing) player.pause() else player.play()
+                    }) {
+                        Text(stringResource(if (playing) R.string.btn_pause else R.string.btn_play))
+                    }
                 }
                 TextButton(onClick = onStop) {
                     Text(stringResource(R.string.btn_stop))
@@ -433,18 +496,35 @@ private fun ImagePane(file: SortFile) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPagerPane(file: SortFile) {
-    val renderer = remember(file.path) {
-        try {
-            val pfd = ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY)
-            PdfRenderer(pfd)
-        } catch (_: Exception) {
-            null
-        }
-    }
+    // v1.0.2: opening the descriptor + parsing the PDF header moved to IO
+    // (it blocked the main thread during composition), and a failed
+    // PdfRenderer construction now CLOSES the descriptor instead of
+    // leaking it. The DisposableEffect owns the whole lifecycle.
+    var renderer by remember(file.path) { mutableStateOf<PdfRenderer?>(null) }
     DisposableEffect(file.path) {
-        onDispose {
+        var pfd: ParcelFileDescriptor? = null
+        var opened: PdfRenderer? = null
+        val job = CoroutineScope(Dispatchers.IO).launch {
             try {
-                renderer?.close()
+                val d = ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY)
+                pfd = d
+                opened = PdfRenderer(d)
+                renderer = opened
+            } catch (_: Exception) {
+                try {
+                    pfd?.close()
+                } catch (_: Exception) {
+                }
+            }
+        }
+        onDispose {
+            job.cancel()
+            try {
+                opened?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                pfd?.close()
             } catch (_: Exception) {
             }
         }
