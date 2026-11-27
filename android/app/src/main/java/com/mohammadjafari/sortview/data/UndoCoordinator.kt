@@ -47,12 +47,24 @@ class UndoCoordinator {
         expected += n
     }
 
-    /** A finished move: record the (src, dst) pair it produced. */
-    fun record(src: String, dst: String) {
-        if (!batchOpen) return
+    /**
+     * A finished move: record the (src, dst) pair it produced.
+     * Returns false when the pair is a duplicate (the backlog drain and
+     * the live event collector can both deliver the same pair — v1.0.2)
+     * or when no batch is open; the caller must then skip its own
+     * counters/UI updates so a file is accounted exactly once.
+     */
+    fun record(src: String, dst: String): Boolean {
+        if (!batchOpen) return false
+        if (pending.any { it.first == src && it.second == dst }) return false
         pending.add(src to dst)
         done++
+        return true
     }
+
+    /** True when this exact pair is already booked in the open batch. */
+    fun alreadyRecorded(src: String, dst: String): Boolean =
+        batchOpen && pending.any { it.first == src && it.second == dst }
 
     /** A failed/cancelled file has nothing to undo, but it has reported back. */
     fun reportBackWithoutPair() {

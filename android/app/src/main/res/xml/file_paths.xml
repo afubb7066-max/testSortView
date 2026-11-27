@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- FileProvider paths for "Open with system player" (media/SystemPlayer.kt).
      The browsed files live on shared storage (/storage/emulated/0/...),
-     which external-path covers; files/cache cover app-private temp copies. -->
+     which external-path covers; files/cache cover app-private temp copies.
+     v1.0.2: root-path additionally covers removable volumes
+     (/storage/XXXX-XXXX on SD cards / OTG) — external-path only maps
+     /storage/emulated/0, so FileProvider threw IllegalArgumentException
+     for files on a card and "Open with system player" always failed there. -->
 <paths>
+    <root-path name="device_root" path="." />
     <external-path name="external_storage" path="." />
     <files-path name="internal_files" path="." />
     <cache-path name="internal_cache" path="." />

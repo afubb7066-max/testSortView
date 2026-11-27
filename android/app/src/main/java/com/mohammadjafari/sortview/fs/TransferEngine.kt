@@ -19,7 +19,6 @@ sealed class TransferEvent {
     data class Started(val src: String, val dstDir: String) : TransferEvent()
     data class Finished(val src: String, val newPath: String) : TransferEvent()
     data class Error(val src: String, val message: String) : TransferEvent()
-    data class QueueUpdated(val queued: Int, val active: Int) : TransferEvent()
 }
 
 /** Transfer aborted because a failure leaves the source file untouched. */
@@ -27,6 +26,14 @@ open class TransferException(message: String) : Exception(message)
 
 /** The user asked to cancel; destination leftovers are cleaned up. */
 class TransferCancelled(message: String) : TransferException(message)
+
+/**
+ * Synchronous queue counters. They deliberately do NOT ride the event
+ * flow: a StateFlow conflates to the latest counts (all a counter consumer
+ * ever needs) and its updates are synchronous, so no queue tick can ever
+ * be dropped (v1.0.2).
+ */
+data class QueueState(val queued: Int, val active: Int, val batchEnqueued: Int)
 
 /**
  * Safe transfer engine — behavioral port of the desktop TransferManager
@@ -55,6 +62,19 @@ class TransferCancelled(message: String) : TransferException(message)
  *      cross-volume attempts fail and fall through;
  *   3. exclusive copy: CREATE_NEW + 2 MiB chunks + fsync + size verify,
  *      and only then the source is deleted — the universal fallback.
+ *
+ * Event delivery (v1.0.2 rework): the old single SharedFlow carried
+ * QueueUpdated ticks AND per-item outcomes through one 256-slot
+ * DROP_OLDEST buffer — a 60+ file batch (~4-5 events per file) could
+ * silently drop Finished/Error events, which starved the undo batch seal
+ * and locked Undo forever. Now:
+ *  - queue counters ride [queueState] (lossless StateFlow, above);
+ *  - the per-item Started/Finished/Error events keep a SharedFlow for the
+ *    live UI, but with a 4096-slot buffer (~1300 files of headroom), and
+ *    the app-scoped TransferHub collector sees every Finished pair even if
+ *    a UI collector ever lags: the hub backlog replays them into the undo
+ *    bookkeeping when the queue drains (self-healing seal).
+ *
  * The engine lives in the application-scoped [TransferHub] (guarded by the
  * com.mohammadjafari.sortview.transfer.TransferService foreground service),
  * so transfers survive the UI being closed.
@@ -65,10 +85,13 @@ class TransferEngine(
 ) {
 
     private val _events = kotlinx.coroutines.flow.MutableSharedFlow<TransferEvent>(
-        extraBufferCapacity = 256,
+        extraBufferCapacity = 4096,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val events: kotlinx.coroutines.flow.SharedFlow<TransferEvent> = _events
+
+    private val _queueState = kotlinx.coroutines.flow.MutableStateFlow(QueueState(0, 0, 0))
+    val queueState: kotlinx.coroutines.flow.StateFlow<QueueState> = _queueState
 
     private val msgCancelled: String = context.getString(R.string.msg_cancelled)
     private val msgSourceMissing: String = context.getString(R.string.msg_source_missing)
@@ -84,6 +107,10 @@ class TransferEngine(
     private var cancelGeneration = 0
     private var pendingCount = 0
     private var activeCount = 0
+
+    /** Exact per-batch enqueue count — the notification progress denominator. */
+    private var batchEnqueued = 0
+
     private var workersStarted = false
 
     private fun startWorkers() {
@@ -108,9 +135,10 @@ class TransferEngine(
             if (src in knownSources) return false
             knownSources.add(src)
             pendingCount++
+            batchEnqueued++
             channel.trySend(Spec(src, dstDir, cancelGeneration))
         }
-        emitQueueUpdated()
+        publishQueueState()
         return true
     }
 
@@ -132,7 +160,7 @@ class TransferEngine(
             cancelGeneration++
             d
         }
-        emitQueueUpdated()
+        publishQueueState()
         return dropped
     }
 
@@ -144,11 +172,11 @@ class TransferEngine(
             pendingCount--
             activeCount++
         }
-        emitQueueUpdated()
+        publishQueueState()
         _events.tryEmit(TransferEvent.Started(spec.src, spec.dstDir))
-        // IMPORTANT: the per-item outcome must be emitted BEFORE the
-        // queue-count update for that item, or the undo batch could be
-        // sealed while its last file is still unreported (desktop _on_done).
+        // The per-item outcome is emitted BEFORE the queue-count update for
+        // that item lands in a collector — no undo batch may seal while its
+        // last file is unreported (desktop _on_done).
         val result = try {
             Result.success(doMove(spec.src, spec.dstDir, spec.generation))
         } catch (e: Exception) {
@@ -165,12 +193,19 @@ class TransferEngine(
             activeCount--
             knownSources.remove(spec.src)
         }
-        emitQueueUpdated()
+        publishQueueState()
     }
 
-    private fun emitQueueUpdated() {
-        val (q, a) = synchronized(lock) { pendingCount to activeCount }
-        _events.tryEmit(TransferEvent.QueueUpdated(q, a))
+    /** Synchronous, lossless queue publish (replaces QueueUpdated events). */
+    private fun publishQueueState() {
+        val state = synchronized(lock) {
+            if (pendingCount == 0 && activeCount == 0) {
+                // Idle: the batch denominator resets for the next batch.
+                batchEnqueued = 0
+            }
+            QueueState(pendingCount, activeCount, batchEnqueued)
+        }
+        _queueState.value = state
     }
 
     private fun isCancelled(generation: Int): Boolean =

@@ -16,9 +16,9 @@ data class TransferProgress(val queued: Int = 0, val active: Int = 0, val batchT
 
     /**
      * Files already finished inside the current batch — the progress-bar
-     * numerator (Phase 5). batchTotal is a per-batch denominator heuristic:
-     * the first non-idle tick of a batch fixes it, mid-batch enqueues only
-     * grow it, and the idle tick resets it to 0 (no bar when idle).
+     * numerator. batchTotal is the engine's exact per-batch enqueue count
+     * (v1.0.2): it grows with every enqueue (a mid-batch add can never make
+     * the bar regress, the old max-heuristic could) and resets at idle.
      */
     val batchDone: Int get() = (batchTotal - queued - active).coerceAtLeast(0)
 }
@@ -35,15 +35,20 @@ data class TransferProgress(val queued: Int = 0, val active: Int = 0, val batchT
  * service keeps that process alive while work is queued or running:
  *
  *  - [engine] lazily creates the app-lifetime engine (idempotent);
- *  - [progress] mirrors the engine's queue_updated ticks for the service
- *    notification;
- *  - finished (src, dst) pairs the UI never saw (its collector died) are
- *    kept in a bounded backlog; [drainCompleted] hands them to the next
- *    ViewModel so the moves stay undoable, and [acknowledge] lets a live
- *    collector retire its own pairs so replays never duplicate them;
+ *  - [progress] mirrors the engine's synchronous [TransferEngine.queueState]
+ *    (v1.0.2: a lossless StateFlow — the old QueueUpdated events shared a
+ *    finite DROP_OLDEST buffer with the per-item outcomes and could be
+ *    dropped, stalling the progress bar and the undo seal);
+ *  - finished (src, dst) pairs the UI never saw (its collector died or an
+ *    event overflowed the bounded flow) are kept in a bounded backlog;
+ *    [drainCompleted] hands them to the next ViewModel so the moves stay
+ *    undoable, and [acknowledge] lets a live collector retire its own pairs
+ *    so replays never duplicate them;
  *  - drops counted by the notification's cancel action are buffered
- *    ([cancelFromService] / [takeDropped]) — the undo coordinator must
- *    reduce its expected count for files that never started.
+ *    ([cancelFromService] / [takeDropped]) and signalled through
+ *    [droppedVersion] so a LIVE ViewModel reconciles immediately (v1.0.2:
+ *    before, a Stop pressed on the notification while the UI was open
+ *    locked the undo batch forever).
  */
 object TransferHub {
 
@@ -52,6 +57,10 @@ object TransferHub {
 
     private val _progress = MutableStateFlow(TransferProgress())
     val progress: StateFlow<TransferProgress> = _progress
+
+    /** Cumulative tick incremented on every notification-side cancel. */
+    private val _droppedVersion = MutableStateFlow(0)
+    val droppedVersion: StateFlow<Int> = _droppedVersion
 
     /** Finished pairs waiting to be re-attached to the undo bookkeeping. */
     private val completedBacklog = ConcurrentLinkedQueue<Pair<String, String>>()
@@ -66,12 +75,6 @@ object TransferHub {
     @Volatile
     private var engineRef: TransferEngine? = null
 
-    /**
-     * Per-batch denominator for the notification progress bar. Owned by the
-     * single collector coroutine below — never touched from other threads.
-     */
-    private var batchTotal = 0
-
     /** The app-lifetime engine; created lazily on first use (idempotent). */
     fun engine(context: Context): TransferEngine {
         engineRef?.let { return it }
@@ -79,26 +82,18 @@ object TransferHub {
             engineRef?.let { return it }
             val engine = TransferEngine(scope, context.applicationContext)
             engineRef = engine
+            // Queue counters: synchronous StateFlow mirror, lossless.
+            scope.launch {
+                engine.queueState.collect { qs ->
+                    _progress.value = TransferProgress(qs.queued, qs.active, qs.batchEnqueued)
+                }
+            }
+            // Finished pairs feed the undo backlog; the single fast collector
+            // on the app scope is authoritative — even if a UI collector
+            // misses a Finished event, this one has it.
             scope.launch {
                 engine.events.collect { ev ->
-                    when (ev) {
-                        is TransferEvent.QueueUpdated -> {
-                            // Phase 5: batch-total heuristic for the
-                            // notification progress bar (file count). The
-                            // first non-idle tick of a batch fixes the
-                            // denominator; a mid-batch enqueue only grows
-                            // it; the idle tick resets it to 0.
-                            val snap = ev.queued + ev.active
-                            if (snap == 0) {
-                                batchTotal = 0
-                            } else if (batchTotal < snap) {
-                                batchTotal = snap
-                            }
-                            _progress.value = TransferProgress(ev.queued, ev.active, batchTotal)
-                        }
-                        is TransferEvent.Finished -> backlogAdd(ev.src to ev.newPath)
-                        else -> Unit
-                    }
+                    if (ev is TransferEvent.Finished) backlogAdd(ev.src to ev.newPath)
                 }
             }
             engine
@@ -129,9 +124,10 @@ object TransferHub {
 
     /**
      * Finished (src, dst) pairs recorded while no UI was subscribed —
-     * called once when a new ViewModel attaches. A pair finishing inside
-     * the attach window may additionally be replayed later (non-destructive
-     * duplicate: [acknowledge] retires it as soon as a collector saw it).
+     * called when a ViewModel attaches and on every queue-drain tick.
+     * A pair finishing inside the attach window may additionally be
+     * replayed later (non-destructive duplicate: the ViewModel dedups by
+     * pair via UndoCoordinator.record, v1.0.2).
      */
     fun drainCompleted(): List<Pair<String, String>> {
         acknowledged.clear()
@@ -158,6 +154,9 @@ object TransferHub {
         val dropped = engine(context).cancelAll()
         if (dropped > 0) {
             synchronized(this) { droppedPending += dropped }
+            // Wake a live ViewModel so the undo bookkeeping fixes itself
+            // immediately instead of waiting for the next attach (v1.0.2).
+            _droppedVersion.value += 1
         }
         return dropped
     }
