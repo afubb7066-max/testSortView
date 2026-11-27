@@ -31,7 +31,8 @@ jobs:
 
       - name: Build debug APK
         run: gradle -p android --no-daemon assembleDebug
-
+      - name: JVM unit tests (naturalKey regression)
+        run: gradle -p android --no-daemon testDebugUnitTest
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
