@@ -52,6 +52,25 @@
     <string name="action_ok">تأیید</string>
     <string name="action_cancel">انصراف</string>
 
+    <!-- v1.0.1: میان‌برهای انتخاب پوشه (پیگیری اولین تست واقعی روی گوشی) -->
+    <string name="qa_internal">حافظه داخلی</string>
+    <string name="qa_storage_list">فهرست حافظه‌ها</string>
+    <string name="qa_dcim">دوربین (DCIM)</string>
+    <string name="qa_downloads">دانلودها</string>
+    <string name="qa_pictures">تصاویر</string>
+    <string name="qa_documents">اسناد</string>
+    <string name="qa_movies">ویدیوها</string>
+    <string name="qa_music">موسیقی</string>
+    <string name="qa_sd_card">کارت حافظه</string>
+    <string name="picker_subfolder_count">{n} زیرپوشه</string>
+    <string name="picker_no_subdirs">زیرپوشه‌ای اینجا نیست — برای انتخاب همین پوشه «انتخاب پوشه» را بزن.</string>
+    <string name="picker_cannot_read">خواندن این پوشه ممکن نیست — یک سطح برو بالا یا از میان‌برهای بالا استفاده کن.</string>
+
+    <!-- v1.0.1: گزارش کرش درون‌برنامه‌ای (درباره سورت‌ویو) -->
+    <string name="crash_section_title">گزارش آخرین کرش</string>
+    <string name="crash_copy">کپی گزارش</string>
+    <string name="crash_clear">پاک کردن</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">انتخاب‌شده: {n}</string>
     <string name="sel_select_all">انتخاب همه</string>

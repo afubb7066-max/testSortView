@@ -24,7 +24,10 @@
          is non-fatal. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- SortViewApp installs the in-app crash logger (filesDir/crash_log.txt,
+         surfaced in the About dialog) — v1.0.1 device-test diagnostics. -->
     <application
+        android:name=".SortViewApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

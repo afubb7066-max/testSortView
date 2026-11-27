@@ -52,6 +52,25 @@
     <string name="action_ok">OK</string>
     <string name="action_cancel">Cancel</string>
 
+    <!-- v1.0.1: folder picker quick access (first device test follow-up) -->
+    <string name="qa_internal">Internal storage</string>
+    <string name="qa_storage_list">Storage list</string>
+    <string name="qa_dcim">Camera (DCIM)</string>
+    <string name="qa_downloads">Downloads</string>
+    <string name="qa_pictures">Pictures</string>
+    <string name="qa_documents">Documents</string>
+    <string name="qa_movies">Videos</string>
+    <string name="qa_music">Music</string>
+    <string name="qa_sd_card">SD card</string>
+    <string name="picker_subfolder_count">{n} subfolder(s)</string>
+    <string name="picker_no_subdirs">No subfolders here — tap \'Select\' to choose this folder.</string>
+    <string name="picker_cannot_read">Cannot read this folder — go one level up or use a shortcut above.</string>
+
+    <!-- v1.0.1: in-app crash report (About dialog) -->
+    <string name="crash_section_title">Last crash report</string>
+    <string name="crash_copy">Copy report</string>
+    <string name="crash_clear">Clear</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">Selected: {n}</string>
     <string name="sel_select_all">Select all</string>
@@ -59,7 +78,7 @@
 
     <!-- permission gate (Android-specific) -->
     <string name="perm_title">Access to all files needed</string>
-    <string name="perm_body">SortView needs \"All files access\" to scan folders and move files. Grant it in the next screen, then come back.</string>
+    <string name="perm_body">SortView needs \'All files access\' to scan folders and move files. Grant it in the next screen, then come back.</string>
     <string name="perm_grant">Grant access to all files</string>
 
     <!-- scanning / status -->
