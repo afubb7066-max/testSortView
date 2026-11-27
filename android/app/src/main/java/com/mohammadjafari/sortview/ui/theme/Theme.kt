@@ -89,6 +89,16 @@ object SortThemes {
 
     fun isKnown(key: String): Boolean = key in THEMES
 
+    /**
+     * (background, accent) of a theme for the picker circle — the mobile
+     * redraw of theme_color_icon (desktop main.py L395-433): the circle
+     * carries the theme's bg colour with the accent colour inside it.
+     */
+    fun previewColors(key: String): Pair<Long, Long> {
+        val t = THEMES[key] ?: THEMES.getValue("dark")
+        return t.bg to t.accent
+    }
+
     fun colorSchemeFor(themeKey: String): ColorScheme {
         val t = THEMES[themeKey] ?: THEMES.getValue("dark")
         val isDark = themeKey != "light" && themeKey != "paper"

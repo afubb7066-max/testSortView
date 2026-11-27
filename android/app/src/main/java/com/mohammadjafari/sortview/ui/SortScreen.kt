@@ -1,10 +1,13 @@
 package com.mohammadjafari.sortview.ui
 
 import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,25 +25,31 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -69,6 +78,8 @@ import com.mohammadjafari.sortview.data.Category
 import com.mohammadjafari.sortview.fs.Paths
 import com.mohammadjafari.sortview.media.MediaGroup
 import com.mohammadjafari.sortview.media.groupForExtension
+import com.mohammadjafari.sortview.ui.theme.SortThemes
+import kotlinx.coroutines.delay
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -77,6 +88,12 @@ import kotlin.math.roundToInt
  * layout: folder header + status bar on top, the file grid in the middle,
  * and the category panel (with the 0-9 shortcuts) at the bottom.
  * Hardware keyboards keep the desktop digit/Ctrl+Z behavior.
+ *
+ * Phase 4 desktop header rows (main.py L2259-2283) are the two rows under
+ * the folder header: the filter field + Name/Type toggle, and the thumb
+ * slider + theme circle + tools menu (sets / cache / about). The theme
+ * circle redraws theme_color_icon (L395-433) as a two-colour circle; the
+ * desktop combo boxes map to dropdown menus and dialogs.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -84,11 +101,18 @@ fun SortScreen(vm: SortViewModel) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
 
+    // Applied tile size: the desktop applies the slider value after its
+    // 280 ms timer (L2443), so the grid and the thumbnail decode size
+    // follow the persisted thumb_size, not the in-drag slider position.
+    val thumbDp = st.thumbSize.dp
+
     // Requested thumbnail resolution in real pixels: the desktop generates
     // thumbs at its thumb_size setting (default 168) and scales them into
     // the tile; the tile height in pixels is the same intent on mobile.
     val density = LocalDensity.current
-    val thumbPx = remember(density) { with(density) { 132.dp.toPx().roundToInt() } }
+    val thumbPx = remember(st.thumbSize, density) {
+        with(density) { thumbDp.toPx().roundToInt() }
+    }
 
     Column(
         modifier = Modifier
@@ -151,6 +175,71 @@ fun SortScreen(vm: SortViewModel) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
         }
 
+        // --- desktop header row2: filter field + Name/Type toggle ---
+        var filterUi by remember { mutableStateOf(st.filterText) }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = filterUi,
+                onValueChange = { filterUi = it },
+                modifier = Modifier.weight(1f),
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.filter_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+            )
+            // Desktop sort combo (main.py L2264): switching Name/Type runs
+            // a full rescan (L2437) — vm.setSortByName owns that.
+            FilterChip(
+                selected = st.sortByName,
+                onClick = { vm.setSortByName(true) },
+                label = { Text(stringResource(R.string.sort_name)) },
+            )
+            FilterChip(
+                selected = !st.sortByName,
+                onClick = { vm.setSortByName(false) },
+                label = { Text(stringResource(R.string.sort_type)) },
+            )
+        }
+        // The desktop filter applies on a 350 ms single-shot timer
+        // (main.py L2440-2442): only the value typed last is rescanned.
+        // LaunchedEffect restarts on every keystroke, so the delay acts
+        // as exactly that debounce; applyFilter ignores equal text, which
+        // makes the first composition a no-op.
+        LaunchedEffect(filterUi) {
+            delay(350)
+            vm.applyFilter(filterUi)
+        }
+
+        // --- desktop header row3: thumb slider + theme circle + tools ---
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.lbl_thumb),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            var thumbUi by remember(st.thumbSize) { mutableFloatStateOf(st.thumbSize.toFloat()) }
+            Slider(
+                value = thumbUi,
+                onValueChange = { thumbUi = it },
+                onValueChangeFinished = { vm.setThumbSize(thumbUi.roundToInt()) },
+                valueRange = SortViewModel.THUMB_MIN.toFloat()..SortViewModel.THUMB_MAX.toFloat(),
+                modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+            )
+            ThemeCircleButton(vm, st.theme)
+            ToolsMenu(vm)
+        }
+
         // --- status line ---
         Text(
             text = context.resolveStatus(st.status),
@@ -190,7 +279,7 @@ fun SortScreen(vm: SortViewModel) {
 
         // --- file grid ---
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = thumbDp),
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(8.dp),
         ) {
@@ -203,6 +292,7 @@ fun SortScreen(vm: SortViewModel) {
                     thumbLoader = vm::loadThumbnail,
                     thumbPx = thumbPx,
                     thumbGeneration = st.thumbGeneration,
+                    tileHeight = thumbDp,
                     onClick = { vm.onTileTap(file.path) },
                     // Double-tap = the desktop's itemDoubleClicked mapping is
                     // the embedded preview here (the dialog itself carries
@@ -268,6 +358,23 @@ fun SortScreen(vm: SortViewModel) {
         CategoryDialog(vm, st)
     }
 
+    // --- Phase 4 tool dialogs (sets / cache / about) ---
+    if (st.setSaveDialog) {
+        SaveSetDialog(vm)
+    }
+    if (st.setLoadDialog) {
+        LoadSetDialog(vm, st)
+    }
+    if (st.pendingLoadSet != null) {
+        ReplaceMergeDialog(vm)
+    }
+    if (st.confirmClearThumbs) {
+        ConfirmClearThumbsDialog(vm)
+    }
+    if (st.showAbout) {
+        AboutDialog(vm)
+    }
+
     // --- Phase 3: full-screen preview dialog (desktop preview panel parity) ---
     st.previewPath?.let { p ->
         val pf = st.files.firstOrNull { it.path == p } ?: run {
@@ -282,6 +389,275 @@ fun SortScreen(vm: SortViewModel) {
         }
         PreviewDialog(vm, pf, st.thumbGeneration)
     }
+}
+
+/** Desktop combo labels for the six THEMES keys (app_i18n.py strings). */
+private val THEME_LABEL_RES = mapOf(
+    "light" to R.string.theme_light,
+    "paper" to R.string.theme_paper,
+    "graphite" to R.string.theme_graphite,
+    "dark" to R.string.theme_dark,
+    "forest" to R.string.theme_forest,
+    "amoled" to R.string.theme_amoled,
+)
+
+/**
+ * The theme picker: a two-colour circle redrawn from theme_color_icon
+ * (desktop main.py L395-433 — the theme's background with its accent
+ * colour inside), opening a dropdown with the six desktop themes.
+ */
+@Composable
+private fun ThemeCircleButton(vm: SortViewModel, current: String) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            val (bg, accent) = SortThemes.previewColors(current)
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(bg))
+                    .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(Color(accent)),
+                )
+            }
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            SortThemes.KEYS.forEach { key ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(THEME_LABEL_RES.getValue(key))) },
+                    leadingIcon = {
+                        val (bg, accent) = SortThemes.previewColors(key)
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Color(bg))
+                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(accent)),
+                            )
+                        }
+                    },
+                    onClick = {
+                        vm.setTheme(key)
+                        open = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The desktop tools menu (sets save/load/export/import, thumbnail cache,
+ * about). Export/import ride SAF (CreateDocument / OpenDocument) —
+ * vm.exportCategorySetTo / importCategorySetFrom own the rest.
+ */
+@Composable
+private fun ToolsMenu(vm: SortViewModel) {
+    var open by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) vm.exportCategorySetTo(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) vm.importCategorySetFrom(uri)
+    }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.tools_menu))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.set_save)) },
+                onClick = { open = false; vm.startSaveCategorySet() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.set_load)) },
+                onClick = { open = false; vm.startLoadCategorySet() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.set_export)) },
+                onClick = {
+                    open = false
+                    // Desktop suggests sortview_categories.json (L2761).
+                    exportLauncher.launch("sortview_categories.json")
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.set_import)) },
+                onClick = {
+                    open = false
+                    // Desktop accepts any path and validates the content.
+                    importLauncher.launch(arrayOf("*/*"))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.thumbs_clear)) },
+                onClick = { open = false; vm.startClearThumbnailCache() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.about_title)) },
+                onClick = { open = false; vm.showAbout() },
+            )
+        }
+    }
+}
+
+/** save_category_set dialog (desktop L2728): a plain name field. */
+@Composable
+private fun SaveSetDialog(vm: SortViewModel) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { vm.dismissSaveCategorySet() },
+        title = { Text(stringResource(R.string.set_save_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.set_name_label)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.saveCategorySet(name) }) {
+                Text(stringResource(R.string.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.dismissSaveCategorySet() }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
+/** load_category_set step 1 (desktop L2738-2744): pick a saved set file. */
+@Composable
+private fun LoadSetDialog(vm: SortViewModel, st: SortUiState) {
+    AlertDialog(
+        onDismissRequest = { vm.dismissLoadCategorySet() },
+        title = { Text(stringResource(R.string.set_load)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.set_choose), style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                st.setFiles.forEach { fileName ->
+                    Text(
+                        text = fileName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { vm.chooseCategorySet(fileName) }
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = { vm.dismissLoadCategorySet() }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
+/** load_category_set step 2 (desktop L2750-2751): replace or merge. */
+@Composable
+private fun ReplaceMergeDialog(vm: SortViewModel) {
+    AlertDialog(
+        onDismissRequest = { vm.cancelReplaceMerge() },
+        title = { Text(stringResource(R.string.set_load)) },
+        text = { Text(stringResource(R.string.set_replace_or_merge)) },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { vm.applyCategorySet(false) }) {
+                    Text(stringResource(R.string.set_merge))
+                }
+                TextButton(onClick = { vm.applyCategorySet(true) }) {
+                    Text(stringResource(R.string.set_replace))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.cancelReplaceMerge() }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
+/** clear_thumbnail_cache confirm (desktop L3885-3913). */
+@Composable
+private fun ConfirmClearThumbsDialog(vm: SortViewModel) {
+    AlertDialog(
+        onDismissRequest = { vm.dismissClearThumbnailCache() },
+        title = { Text(stringResource(R.string.thumbs_clear)) },
+        text = { Text(stringResource(R.string.thumbs_confirm_body)) },
+        confirmButton = {
+            TextButton(onClick = { vm.clearThumbnailCache() }) {
+                Text(stringResource(R.string.thumbs_confirm_clear))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.dismissClearThumbnailCache() }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
+/**
+ * About (contract #7): version line through the {x} resolver — the
+ * desktop-style "{v}" placeholder cannot ride stringResource's %1$s
+ * formatter — plus the attribution body.
+ */
+@Composable
+private fun AboutDialog(vm: SortViewModel) {
+    val context = LocalContext.current
+    val version = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        } catch (_: Exception) {
+            null
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { vm.dismissAbout() },
+        title = { Text(stringResource(R.string.about_title)) },
+        text = {
+            Column {
+                Text(
+                    text = context.resolveStatus(statusOf(R.string.about_version, "v" to (version ?: "?"))),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(stringResource(R.string.about_body), style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.dismissAbout() }) {
+                Text(stringResource(R.string.action_ok))
+            }
+        },
+    )
 }
 
 @Composable
@@ -326,7 +702,8 @@ private val FailedBg = Color(0xFFFFDDDD)
  *    (visible tiles ask first — off-screen tiles are not composed);
  *  - everything else: the gradient type card is the final render.
  * Real previews letterbox with ContentScale.Fit = desktop
- * pix.scaled(size, size, KEEP_ASPECT, SMOOTH).
+ * pix.scaled(size, size, KEEP_ASPECT, SMOOTH). The tile follows the
+ * Phase-4 thumb_size setting (desktop thumb slider, L2271-2277).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -338,6 +715,7 @@ private fun FileTile(
     thumbLoader: suspend (SortFile, Int) -> Bitmap?,
     thumbPx: Int,
     thumbGeneration: Int,
+    tileHeight: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -365,7 +743,7 @@ private fun FileTile(
                     Modifier
                 }
             )
-            .height(132.dp),
+            .height(tileHeight),
     ) {
         if (file.group == MediaGroup.IMAGE) {
             SubcomposeAsyncImage(
@@ -377,7 +755,10 @@ private fun FileTile(
                 error = { TypeCard(file, Modifier.fillMaxSize()) },
             )
         } else {
-            val bmpState = produceState<Bitmap?>(null, file.path, thumbGeneration) {
+            // Keyed on thumbPx too: a new slider size re-decodes the tile
+            // at the requested resolution (the engine cache key includes
+            // reqPx, like the desktop).
+            val bmpState = produceState<Bitmap?>(null, file.path, thumbGeneration, thumbPx) {
                 value = thumbLoader(file, thumbPx)
             }
             val bmp = bmpState.value
