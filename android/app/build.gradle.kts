@@ -13,8 +13,8 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
     }
 
     buildTypes {
@@ -54,6 +54,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Phase 2 thumbnails: commons-compress provides the archive first-image
@@ -68,4 +69,7 @@ dependencies {
     // (REPEAT_MODE_ONE == setLoops(-1)), audio plays without a video surface.
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
+
+    // JVM regression tests (PathsTest) — run in CI via testDebugUnitTest.
+    testImplementation("junit:junit:4.13.2")
 }
