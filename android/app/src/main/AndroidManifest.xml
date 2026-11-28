@@ -55,9 +55,17 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- v1.0.3: portrait lock. The app is a single-Activity Compose app;
+             rotation only re-layouts the grid AND (from v1.1.0 on) would
+             reset the full-screen vertical feed mid-browse. The sorting flow
+             is vertical-first on a phone, and landscape adds nothing to a
+             file-sorting list. tools:ignore keeps the lint
+             LockedOrientationActivity warning out of release builds. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
