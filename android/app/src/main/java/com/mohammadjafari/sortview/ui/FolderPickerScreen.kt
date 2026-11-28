@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,14 +75,18 @@ import kotlinx.coroutines.withContext
  * folder) and the selection lands back in the open dialog. The hardware
  * back button closes the picker instead of leaving the app, and the screen
  * respects the system bars on Android 15 (enforced edge-to-edge).
+ *
+ * v1.0.3: the path text and the recursive checkbox use rememberSaveable —
+ * both used to reset to the start path when the screen was rotated mid-
+ * navigation, because plain remember{} state dies with the screen.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FolderPickerScreen(vm: SortViewModel) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
-    var pathText by remember { mutableStateOf(vm.pickerStartPath()) }
-    var recursive by remember { mutableStateOf(st.includeSubfolders) }
+    var pathText by rememberSaveable { mutableStateOf(vm.pickerStartPath()) }
+    var recursive by rememberSaveable { mutableStateOf(st.includeSubfolders) }
     var subdirs by remember { mutableStateOf<List<File>>(emptyList()) }
     var readable by remember { mutableStateOf(true) }
 
