@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -119,6 +120,12 @@ import kotlin.math.roundToInt
  * clicks"), the category chips scroll when the panel overflows, and the
  * category dialog gained the desktop Browse button backed by the picker
  * (PickerTarget.CATEGORY).
+ *
+ * v1.1.0: the screen becomes the MANAGEMENT surface of the two-surface
+ * navigation — [onOpenFeed] hands over to the Reels-style FeedScreen for
+ * the day-to-day one-file-at-a-time sorting. The grid stays reachable
+ * (multi-select batches, categories, sets, tools) and opens the feed via
+ * the paper-plane header button.
  */
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -126,7 +133,7 @@ import kotlin.math.roundToInt
     ExperimentalMaterial3Api::class,
 )
 @Composable
-fun SortScreen(vm: SortViewModel) {
+fun SortScreen(vm: SortViewModel, onOpenFeed: () -> Unit = {}) {
     val st by vm.state.collectAsState()
     val context = LocalContext.current
     val view = LocalView.current
@@ -190,7 +197,7 @@ fun SortScreen(vm: SortViewModel) {
                 }
             },
     ) {
-        // --- header: folder label + refresh + change folder ---
+        // --- header: folder label + refresh + change folder + feed ---
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -214,6 +221,21 @@ fun SortScreen(vm: SortViewModel) {
             }
             TextButton(onClick = { vm.openFolderPicker() }) {
                 Text(stringResource(R.string.btn_change_folder))
+            }
+            // v1.1.0: hand over to the Reels feed — one file at a time with
+            // the shared player, quick dock and swipe sends. Disabled while
+            // no source folder is picked (an empty feed has nothing to show).
+            TextButton(
+                onClick = onOpenFeed,
+                enabled = st.candidateFolder.isNotEmpty(),
+            ) {
+                Icon(
+                    Icons.Filled.Send,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.size(4.dp))
+                Text(stringResource(R.string.btn_feed))
             }
         }
 
