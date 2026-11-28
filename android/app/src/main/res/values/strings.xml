@@ -77,6 +77,22 @@
     <string name="btn_browse">Browse</string>
     <string name="err_audio_playback_failed">Audio playback failed</string>
 
+    <!-- v1.1.0: Reels-style feed mode (ui/FeedScreen.kt) — the phone-first
+         sorting surface: one file at a time, vertical swiping, a quick
+         dock, the send sheet and configurable swipe targets. -->
+    <string name="btn_feed">Feed</string>
+    <string name="feed_settings_title">Feed settings</string>
+    <string name="feed_quick_dock">Quick shortcuts (up to 6)</string>
+    <string name="feed_swipe_left">Swipe left sends to:</string>
+    <string name="feed_swipe_right">Swipe right sends to:</string>
+    <string name="feed_swipe_off">Off</string>
+    <string name="feed_send_title">Send to category</string>
+    <string name="feed_no_categories">No categories yet — add them on the grid screen first.</string>
+    <string name="feed_moved_to">Sent to {name}</string>
+    <string name="feed_all_done_title">All files sorted</string>
+    <string name="feed_back_to_grid">Back to the grid</string>
+    <string name="feed_search">Search</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">Selected: {n}</string>
     <string name="sel_select_all">Select all</string>

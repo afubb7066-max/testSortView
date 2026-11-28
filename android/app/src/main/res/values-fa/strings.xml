@@ -77,6 +77,22 @@
     <string name="btn_browse">مرور</string>
     <string name="err_audio_playback_failed">پخش صدا ناموفق بود</string>
 
+    <!-- v1.1.0: حالت فید ریلزی (ui/FeedScreen.kt) — صفحه‌ی مرتب‌سازی موبایلی:
+         یک فایل در هر لحظه، اسکرول عمودی، داک میان‌بر، شیت ارسال و
+         مقصدهای سوایپ قابل تنظیم. -->
+    <string name="btn_feed">فید</string>
+    <string name="feed_settings_title">تنظیمات فید</string>
+    <string name="feed_quick_dock">میان‌برهای سریع (حداکثر ۶)</string>
+    <string name="feed_swipe_left">کشیدن به چپ بفرستد به:</string>
+    <string name="feed_swipe_right">کشیدن به راست بفرستد به:</string>
+    <string name="feed_swipe_off">خاموش</string>
+    <string name="feed_send_title">ارسال به دسته</string>
+    <string name="feed_no_categories">هنوز دسته‌ای نیست — اول در صفحه‌ی گرید اضافه کن.</string>
+    <string name="feed_moved_to">به {name} رفت</string>
+    <string name="feed_all_done_title">همه‌ی فایل‌ها مرتب شدند</string>
+    <string name="feed_back_to_grid">بازگشت به گرید</string>
+    <string name="feed_search">جست‌وجو</string>
+
     <!-- selection (Android-specific) -->
     <string name="sel_count">انتخاب‌شده: {n}</string>
     <string name="sel_select_all">انتخاب همه</string>
