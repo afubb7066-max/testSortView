@@ -29,6 +29,16 @@ class UndoCoordinator {
     val isActive: Boolean get() = busy
 
     /**
+     * True while a batch is open (v1.0.3). The orphaned-transfer reconcile
+     * must only call [expect] for drained pairs when this is FALSE — pairs
+     * belonging to the session's already-open batch were counted by the
+     * enqueue path, and re-expecting them makes done permanently fall short
+     * of expected, so the batch could never seal and Undo locked forever
+     * (the v1.0.2 regression the idle-tick-vs-Finished race exposed).
+     */
+    val hasOpenBatch: Boolean get() = batchOpen
+
+    /**
      * Open a new undo batch for a transfer round. If a round is still in
      * flight its batch stays open and the rounds merge into one undo entry
      * (all files return, which is always safe — desktop comment L3674).
