@@ -8,8 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mohammadjafari.sortview.R
 import com.mohammadjafari.sortview.data.AppConfigStore
+import com.mohammadjafari.sortview.data.AndroidPrefs
 import com.mohammadjafari.sortview.data.Category
 import com.mohammadjafari.sortview.data.CategorySets
+import com.mohammadjafari.sortview.data.FeedPrefs
 import com.mohammadjafari.sortview.data.SortConfig
 import com.mohammadjafari.sortview.data.UndoCoordinator
 import com.mohammadjafari.sortview.data.normalizeCategories
@@ -141,6 +143,14 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
     private val undo = UndoCoordinator()
     private val thumbs = ThumbnailEngine(app)
     private val sets = CategorySets(app)
+
+    // v1.1.0: Android-only feed preferences (quick dock pins, swipe
+    // targets) — they live in filesDir/android_prefs.json via [AndroidPrefs],
+    // NEVER in config.json: the desktop normalize drops unknown keys
+    // (contract #1) and would erase them on the next desktop save.
+    private val androidPrefs = AndroidPrefs(app)
+    private val _feedPrefs = MutableStateFlow(androidPrefs.load())
+    val feedPrefs: StateFlow<FeedPrefs> = _feedPrefs
 
     private val _state = MutableStateFlow(SortUiState())
     val state: StateFlow<SortUiState> = _state
@@ -1284,6 +1294,56 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         scanFolder()
     }
 
+    // ---------------- feed mode (v1.1.0) ----------------
+
+    /** Swipe-left send target (null = off). Persisted in android_prefs.json. */
+    fun setSwipeLeftCategory(path: String?) {
+        saveFeedPrefs(_feedPrefs.value.copy(swipeLeftPath = path))
+    }
+
+    /** Swipe-right send target (null = off). Persisted in android_prefs.json. */
+    fun setSwipeRightCategory(path: String?) {
+        saveFeedPrefs(_feedPrefs.value.copy(swipeRightPath = path))
+    }
+
+    /**
+     * Pin/unpin a category on the feed quick dock (max 6 — the oldest pin
+     * falls off, tap order is kept). Persisted in android_prefs.json.
+     */
+    fun toggleQuickCategory(path: String) {
+        val current = _feedPrefs.value.quickCategories.toMutableList()
+        if (!current.remove(path)) {
+            if (current.size >= FEED_QUICK_MAX) current.removeAt(0)
+            current.add(path)
+        }
+        saveFeedPrefs(_feedPrefs.value.copy(quickCategories = current))
+    }
+
+    private fun saveFeedPrefs(p: FeedPrefs) {
+        _feedPrefs.value = p
+        viewModelScope.launch(Dispatchers.IO) { androidPrefs.save(p) }
+    }
+
+    /**
+     * Feed-mode single-file send (v1.1.0). The FeedScreen releases the
+     * shared player BEFORE calling this — the 200 ms settle matches
+     * [moveSelectedToCategory] (player stop/release is asynchronous; a
+     * locked file would fail the move) — then the standard [doEnqueue]
+     * runs: FGS start, same-folder skip, and the undo batch + expect with
+     * the v1.0.3 ordering (batch opens before the first enqueue).
+     */
+    fun sendPathToCategory(path: String, categoryPath: String) {
+        val f = File(path)
+        if (!f.isFile) return
+        val dst = categoryPath.trim()
+        if (dst.isEmpty()) return
+        _state.update { it.copy(status = statusOf(R.string.msg_preparing_transfer)) }
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(200)
+            doEnqueue(listOf(path), dst)
+        }
+    }
+
     // ---------------- digit shortcuts (main.py L4022) ----------------
 
     /** Digit 0-9 pressed (on-screen category chips or a hardware keyboard). */
@@ -1310,6 +1370,9 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Last resort start dir for the picker (primary storage root). */
         const val DEFAULT_PICKER_PATH = "/storage/emulated/0"
+
+        /** Feed quick dock capacity (v1.1.0). */
+        const val FEED_QUICK_MAX = 6
 
         private const val MOVE_DEBOUNCE_S = 0.30
         private const val KEY_DEBOUNCE_S = 0.25
