@@ -15,8 +15,8 @@ android {
         applicationId = "com.mohammadjafari.sortview"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.0.2"
+        versionCode = 12
+        versionName = "1.1.0"
     }
 
     // Phase 5 release signing: the release-apk.yml workflow exposes the
