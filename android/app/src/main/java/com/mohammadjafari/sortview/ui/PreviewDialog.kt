@@ -82,6 +82,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -500,32 +502,59 @@ private fun PdfPagerPane(file: SortFile) {
     // (it blocked the main thread during composition), and a failed
     // PdfRenderer construction now CLOSES the descriptor instead of
     // leaking it. The DisposableEffect owns the whole lifecycle.
+    //
+    // v1.0.3: ONE Mutex serializes open / render / close. PdfRenderer is
+    // NOT thread-safe: the old onDispose called opened?.close() on the
+    // main thread while an IO-thread page render could still be running
+    // inside the renderer (native crash), and when disposal landed while
+    // the blocking PdfRenderer(d) constructor was still in flight, the
+    // freshly created renderer + descriptor leaked — job.cancel() cannot
+    // interrupt a blocking call. Both paths now take the same Mutex, and
+    // the close runs on the IO thread under that lock: it waits for any
+    // in-flight render and also covers the open-in-progress case.
     var renderer by remember(file.path) { mutableStateOf<PdfRenderer?>(null) }
+    val pdfMutex = remember(file.path) { Mutex() }
     DisposableEffect(file.path) {
         var pfd: ParcelFileDescriptor? = null
         var opened: PdfRenderer? = null
         val job = CoroutineScope(Dispatchers.IO).launch {
             try {
                 val d = ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY)
-                pfd = d
-                opened = PdfRenderer(d)
-                renderer = opened
-            } catch (_: Exception) {
-                try {
-                    pfd?.close()
-                } catch (_: Exception) {
+                pdfMutex.withLock {
+                    try {
+                        val r = PdfRenderer(d)
+                        opened = r
+                        pfd = d
+                        renderer = r
+                    } catch (_: Exception) {
+                        // A failed renderer construction must not leak the
+                        // descriptor it was handed (v1.0.2 fix, kept).
+                        try {
+                            d.close()
+                        } catch (_: Exception) {
+                        }
+                    }
                 }
+            } catch (_: Exception) {
             }
         }
         onDispose {
             job.cancel()
-            try {
-                opened?.close()
-            } catch (_: Exception) {
-            }
-            try {
-                pfd?.close()
-            } catch (_: Exception) {
+            // Close ON the IO thread under the SAME Mutex (v1.0.3): waits
+            // for any in-flight page render first, and when the blocking
+            // open was still in flight it publishes under the lock and
+            // hands it straight over to this closer.
+            CoroutineScope(Dispatchers.IO).launch {
+                pdfMutex.withLock {
+                    try {
+                        opened?.close()
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        pfd?.close()
+                    } catch (_: Exception) {
+                    }
+                }
             }
         }
     }
@@ -541,7 +570,7 @@ private fun PdfPagerPane(file: SortFile) {
     Column(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().weight(1f)) { index ->
             val bmpState = produceState<Bitmap?>(null, file.path, index) {
-                value = withContext(Dispatchers.IO) { renderPdfPage(renderer, index) }
+                value = withContext(Dispatchers.IO) { renderPdfPage(renderer, index, pdfMutex) }
             }
             val bmp = bmpState.value
             if (bmp != null) {
@@ -572,14 +601,17 @@ private fun PdfPagerPane(file: SortFile) {
 
 /**
  * Render one PDF page on a worker thread; PdfRenderer itself is not
- * thread-safe. Takes the nullable holder state directly — Kotlin cannot
- * smart-cast a delegated property (var by remember), so the null check
- * lives in here instead of at the call site.
+ * thread-safe. v1.0.3: serialized through the pane's [Mutex] — the same
+ * lock the open/close lifecycle uses — so a page render can never overlap
+ * renderer.close() (the old dispose closed on the main thread and could
+ * race a running render). Takes the nullable holder state directly —
+ * Kotlin cannot smart-cast a delegated property (var by remember), so the
+ * null check lives in here instead of at the call site.
  */
-private fun renderPdfPage(renderer: PdfRenderer?, index: Int): Bitmap? {
+private suspend fun renderPdfPage(renderer: PdfRenderer?, index: Int, lock: Mutex): Bitmap? {
     val r = renderer ?: return null
     return try {
-        synchronized(r) {
+        lock.withLock {
             r.openPage(index).use { page ->
                 val maxSide = maxOf(page.width, page.height).coerceAtLeast(1)
                 val scale = PDF_PAGE_PX.toFloat() / maxSide
