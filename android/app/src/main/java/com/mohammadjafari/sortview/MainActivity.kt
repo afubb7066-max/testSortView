@@ -31,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mohammadjafari.sortview.data.AppConfigStore
+import com.mohammadjafari.sortview.ui.FeedScreen
 import com.mohammadjafari.sortview.ui.FolderPickerScreen
 import com.mohammadjafari.sortview.ui.SortScreen
 import com.mohammadjafari.sortview.ui.SortViewModel
@@ -140,10 +142,29 @@ fun RootApp(vm: SortViewModel = viewModel()) {
 
     if (granted) {
         val st by vm.state.collectAsState()
+        // v1.1.0: two-surface navigation — the management grid (SortScreen)
+        // and the full-screen Reels feed (FeedScreen). The feed opens
+        // automatically right after a NEW source folder is picked (the
+        // phone-first flow: pick folder -> sort in the feed); the feed's
+        // back button / hardware back returns to the grid. rememberSaveable
+        // keeps the active surface across rotation and process death.
+        var feedMode by rememberSaveable { mutableStateOf(false) }
+        var lastFolder by rememberSaveable { mutableStateOf("") }
+        LaunchedEffect(st.candidateFolder) {
+            if (lastFolder.isNotEmpty() &&
+                st.candidateFolder.isNotEmpty() &&
+                st.candidateFolder != lastFolder
+            ) {
+                feedMode = true
+            }
+            lastFolder = st.candidateFolder
+        }
         if (st.showFolderPicker) {
             FolderPickerScreen(vm)
+        } else if (feedMode) {
+            FeedScreen(vm, onBack = { feedMode = false })
         } else {
-            SortScreen(vm)
+            SortScreen(vm, onOpenFeed = { feedMode = true })
         }
     } else {
         PermissionGate { granted = hasStorageAccess(context) }
