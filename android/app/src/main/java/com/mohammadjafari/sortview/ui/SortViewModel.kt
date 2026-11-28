@@ -230,17 +230,28 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
      * The pairs become one sealed undo round so the moves stay undoable
      * (TransferHub KDoc); drops reduce the expected count like the
      * desktop cancel path (main.py L3753).
+     *
+     * v1.0.3 race fix: the idle tick of TransferHub.progress can beat the
+     * last Finished event of engine.events. The drained pair was already
+     * counted by doEnqueue's expect() whenever this session's batch was
+     * open — expecting it again made expected permanently exceed done, the
+     * batch never sealed and the Undo button locked forever (the v1.0.2
+     * regression). Only a still-CLOSED batch (fresh attach, the previous
+     * session's leftovers) books new expectations here; an open batch gets
+     * the drained pairs recorded WITHOUT touching the counters, because
+     * record() dedups against the pairs the live event already booked.
      */
     private fun reconcileOrphanedTransfers() {
         val orphans = TransferHub.drainCompleted()
         val dropped = TransferHub.takeDropped()
         if (orphans.isEmpty() && dropped == 0) return
+        val batchWasOpen = undo.hasOpenBatch
         undo.openBatchIfClosed()
         // Pairs the live event collector already recorded (drain-vs-event
         // race) must not re-enter the bookkeeping — expect() counts only
         // the fresh ones or the batch could never seal (v1.0.2 dedup).
         val fresh = orphans.filterNot { undo.alreadyRecorded(it.first, it.second) }
-        undo.expect(fresh.size)
+        if (!batchWasOpen) undo.expect(fresh.size)
         for ((src, dst) in fresh) onTransferFinished(src, dst)
         if (dropped > 0) undo.adjustDropped(dropped)
         if (undo.sealIfQueueIdle()) refreshUndoState()
@@ -688,9 +699,18 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(showFolderPicker = false, pickerError = null) }
     }
 
-    /** Start dir for the picker: candidate folder, else last browse dir (desktop L3925). */
+    /**
+     * Start dir for the picker: candidate folder, else last browse dir
+     * (desktop L3925). v1.0.3: the CATEGORY dialog Browse starts from the
+     * dialog's own path (categoryDialogPath) — opening from the browse
+     * folder forced the user to re-navigate to the category's folder on
+     * every edit.
+     */
     fun pickerStartPath(): String {
         val st = _state.value
+        if (st.pickerTarget == PickerTarget.CATEGORY) {
+            st.categoryDialogPath?.takeIf { it.isNotBlank() }?.let { return it }
+        }
         return st.candidateFolder.ifEmpty {
             st.lastBrowseDir.ifEmpty { DEFAULT_PICKER_PATH }
         }
@@ -719,6 +739,12 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(
                     categoryDialogPath = f.path,
+                    // v1.0.3: pre-fill an empty name with the picked folder
+                    // name — one less field to type on a phone (the dialog
+                    // name stays untouched when the user already typed one).
+                    categoryDialogName = st.categoryDialogName
+                        ?.takeIf { it.isNotBlank() }
+                        ?: f.name,
                     showFolderPicker = false,
                     pickerError = null,
                 )
@@ -1029,6 +1055,14 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
             }
         }
+        // v1.0.3: open the undo batch BEFORE the first enqueue. A very fast
+        // worker could otherwise report Finished while the batch was still
+        // closed — record() would drop the pair (no batch open) and the
+        // expect(queued) afterwards would then over-count: done could never
+        // reach expected and Undo locked. Opening first makes a hyper-fast
+        // finish book itself through record(), and expect(queued) after the
+        // loop lands on the exact number actually enqueued.
+        undo.openBatchIfClosed()
         var queued = 0
         var skipped = 0
         val dstF = File(dst)
@@ -1045,13 +1079,10 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         if (queued > 0) {
+            undo.expect(queued)
             var msg = statusOf(R.string.msg_queued_n, "n" to queued)
             if (skipped > 0) msg = msg + statusOf(R.string.msg_skipped_n, "n" to skipped)
             _state.update { it.copy(status = msg) }
-            // Open a new undo batch; if a round is still in flight the two
-            // merge into one undo entry (desktop L3674-3685).
-            undo.openBatchIfClosed()
-            undo.expect(queued)
         } else if (skipped > 0) {
             _state.update { it.copy(status = statusOf(R.string.msg_no_new_files_queued)) }
         } else {
@@ -1074,8 +1105,22 @@ class SortViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun onTransferFinished(src: String, newPath: String) {
         // record() returns false for a duplicate pair (backlog drain vs
-        // live event, v1.0.2) — counters and list updates run exactly once.
-        if (!undo.record(src, newPath)) return
+        // live event, v1.0.2) or when no batch is open at all.
+        if (!undo.record(src, newPath)) {
+            if (!undo.hasOpenBatch) {
+                // v1.0.3: a Finished for a move THIS session never expected —
+                // an in-flight round left over from the previous ViewModel
+                // attach — must not be dropped silently. Book it as its own
+                // single-file round so the move stays undoable.
+                undo.openBatchIfClosed()
+                undo.expect(1)
+                if (!undo.record(src, newPath)) return
+            } else {
+                // Duplicate (already booked) — skip the counters so a file
+                // is accounted exactly once.
+                return
+            }
+        }
         val oldName = File(src).name
         val newName = File(newPath).name
         _state.update {
